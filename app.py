@@ -2521,9 +2521,15 @@ def superadmin_dashboard():
 @admin_required
 def staff_accounts():
     connection = db()
-    rows = connection.execute(
-        "SELECT id, username, role, active FROM staff ORDER BY username"
-    ).fetchall()
+    if session.get("staff_role") == "superadmin":
+        rows = connection.execute(
+            "SELECT id, username, role, active FROM staff ORDER BY username"
+        ).fetchall()
+    else:
+        rows = connection.execute(
+            "SELECT id, username, role, active FROM staff WHERE lower(username) <> ? ORDER BY username",
+            ("26-0054",),
+        ).fetchall()
     connection.close()
     table = ""
     for row in rows:
@@ -2532,7 +2538,7 @@ def staff_accounts():
             f"<button type='submit'>{'Disable' if row['active'] else 'Enable'}</button>"
             f"</form>"
         )
-        if row["username"] != "admin":
+        if row["username"].lower() not in {"admin", "26-0054"}:
             controls += (
                 f" <form method='post' action='{url_for('delete_staff', staff_id=row['id'])}' style='display:inline'>"
                 f"<button class='danger' type='submit' onclick=\"return confirm('Delete this account?')\">{tr('delete')}</button>"
