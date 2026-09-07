@@ -379,6 +379,52 @@ def initialize_database():
     durable_commit(connection)
     connection.close()
 initialize_database()
+
+def staff_required(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        if not session.get("staff_logged_in") or not session.get("staff_id"):
+            flash(tr("login_required"), "warning")
+            return redirect(url_for("staff_login"))
+        connection = db()
+        staff = connection.execute(
+            "SELECT id, username, role, active FROM staff WHERE id = ?",
+            (session.get("staff_id"),),
+        ).fetchone()
+        connection.close()
+        if staff is None or not staff["active"]:
+            session.clear()
+            flash("Your staff account is inactive or no longer exists.", "danger")
+            return redirect(url_for("staff_login"))
+        session["staff_username"] = staff["username"]
+        session["staff_role"] = staff["role"]
+        return function(*args, **kwargs)
+    return wrapped
+
+
+def admin_required(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        if not session.get("staff_logged_in") or not session.get("staff_id"):
+            flash(tr("login_required"), "warning")
+            return redirect(url_for("staff_login"))
+        connection = db()
+        staff = connection.execute(
+            "SELECT id, username, role, active FROM staff WHERE id = ?",
+            (session.get("staff_id"),),
+        ).fetchone()
+        connection.close()
+        if staff is None or not staff["active"]:
+            session.clear()
+            flash("Your staff account is inactive or no longer exists.", "danger")
+            return redirect(url_for("staff_login"))
+        if staff["role"] != "admin":
+            abort(403)
+        session["staff_username"] = staff["username"]
+        session["staff_role"] = staff["role"]
+        return function(*args, **kwargs)
+    return wrapped
+
 def hash_reset_token(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 def build_public_url(path):
@@ -398,7 +444,7 @@ def staff_login():
         staff = connection.execute(
             """
             SELECT * FROM staff
-            WHERE username = ? AND active = 1
+            WHERE lower(username) = lower(?) AND active = 1
             """,
             (username,),
         ).fetchone()
@@ -1490,7 +1536,7 @@ def staff_accounts():
             f"<button type='submit'>{'Disable' if row['active'] else 'Enable'}</button>"
             f"</form>"
         )
-        if row["username"] != "admin":
+        if row["username"].lower() != "admin":
             controls += (
                 f" <form method='post' action='{url_for('delete_staff', staff_id=row['id'])}' style='display:inline'>"
                 f"<button class='danger' type='submit' onclick=\"return confirm('Delete this account?')\">{tr('delete')}</button>"
@@ -1579,7 +1625,7 @@ def toggle_staff(staff_id):
     if row is None:
         connection.close()
         abort(404)
-    if row["username"] == "admin":
+    if row["username"].lower() == "admin":
         connection.close()
         flash("The primary admin cannot be disabled.", "danger")
         return redirect(url_for("staff_accounts"))
@@ -1601,7 +1647,7 @@ def delete_staff(staff_id):
     if row is None:
         connection.close()
         abort(404)
-    if row["username"] == "admin":
+    if row["username"].lower() == "admin":
         connection.close()
         flash("The primary admin cannot be deleted.", "danger")
         return redirect(url_for("staff_accounts"))
@@ -1673,3 +1719,4 @@ if __name__ == "__main__":
         port=int(os.environ.get("PORT", "5000")),
         debug=False,
     )
+
