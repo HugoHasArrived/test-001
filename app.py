@@ -3034,7 +3034,7 @@ def update_requirement(category):
 def staff_accounts():
     connection = db()
     rows = connection.execute(
-        "SELECT id, username, email, role, active FROM staff ORDER BY username"
+        "SELECT id, username, role, active FROM staff ORDER BY username"
     ).fetchall()
     connection.close()
 
@@ -3057,7 +3057,6 @@ def staff_accounts():
         table += f"""
         <tr>
             <td><strong>{esc(row['username'])}</strong></td>
-            <td>{esc(row['email'])}</td>
             <td>{esc(row['role'])}</td>
             <td><span class="status">{'Active' if row['active'] else 'Disabled'}</span></td>
             <td>🔒 Hidden (secure hash)<br><span class="small">Use Set/Reset Password to generate a new one.</span></td>
@@ -3070,8 +3069,6 @@ def staff_accounts():
     <section class="card">
         <h1 class="center">👥 {tr('staff_accounts')}</h1>
         <form method="post" action="{url_for('add_staff')}" autocomplete="off">
-            <label>{tr('email')}</label>
-            <input type="email" name="email" required>
             <label>{tr('username')}</label>
             <input name="username" required>
             <label>{tr('password')}</label>
@@ -3084,7 +3081,7 @@ def staff_accounts():
 
     <section class="card table-wrap">
         <table>
-            <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Password</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Password</th><th>Actions</th></tr></thead>
             <tbody>{table}</tbody>
         </table>
     </section>
@@ -3097,14 +3094,16 @@ def staff_accounts():
 def add_staff():
     username = request.form.get("username", "").strip()
     email = request.form.get("email", "").strip()
+    if not email:
+        email = ""
     password = request.form.get("password", "")
     role = request.form.get("role", "staff")
 
     if role not in {"staff", "admin"}:
         role = "staff"
 
-    if not username or not email or not password:
-        flash("Username, email and password are required.", "danger")
+    if not username or not password:
+        flash("Username and password are required.", "danger")
         return redirect(url_for("staff_accounts"))
 
     if len(password) < 8:
@@ -3130,7 +3129,7 @@ def add_staff():
         connection.commit()
     except sqlite3.IntegrityError:
         connection.close()
-        flash("That username or email already exists.", "danger")
+        flash("That username already exists.", "danger")
         return redirect(url_for("staff_accounts"))
     connection.close()
     audit("staff_created", username)
@@ -3138,7 +3137,6 @@ def add_staff():
     <section class="card centered" style="max-width:700px;margin:45px auto">
         <h1>✅ Staff Account Created</h1>
         <p><strong>Username:</strong> {esc(username)}</p>
-        <p><strong>Email:</strong> {esc(email)}</p>
         <p><strong>Role:</strong> {esc(role)}</p>
         <div class="card" style="margin-top:20px">
             <h2>🔑 Temporary Password</h2>
@@ -3176,7 +3174,6 @@ def reset_staff_password(staff_id):
     <section class="card centered" style="max-width:700px;margin:45px auto">
         <h1>🔑 Password Reset</h1>
         <p><strong>Username:</strong> {esc(row['username'])}</p>
-        <p><strong>Email:</strong> {esc(row['email'])}</p>
         <div class="card" style="margin-top:20px">
             <h2>New Temporary Password</h2>
             <p style="font-size:1.35rem;font-weight:800;word-break:break-all">{esc(temporary_password)}</p>
