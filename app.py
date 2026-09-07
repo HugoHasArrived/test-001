@@ -642,19 +642,89 @@ def send_emailjs_reset_email(recipient, reset_url):
         return False, f"EmailJS error: {type(exc).__name__}: {exc}"
 
 
+def send_formsubmit_reset_email(recipient, reset_url):
+    """Send a password-reset email through FormSubmit over HTTPS.
+
+    FormSubmit is a zero-cost form-to-email service. The first time an
+    address is used, the recipient may receive an activation email from
+    FormSubmit and must confirm it; later submissions are forwarded to that
+    mailbox. This avoids SMTP ports, which are commonly blocked on free hosts.
+    """
+    try:
+        import json
+        from urllib.parse import quote
+
+        endpoint = (
+            "https://formsubmit.co/ajax/"
+            + quote(recipient, safe="@")
+        )
+        payload = {
+            "_subject": "MCTC Silang-Amadeo Staff Password Reset",
+            "_template": "box",
+            "_captcha": "true",
+            "name": "MCTC Silang-Amadeo",
+            "email": recipient,
+            "message": (
+                "A password reset was requested for your staff account.\n\n"
+                "Use this secure one-time link to create a new password:\n"
+                f"{reset_url}\n\n"
+                "This link expires in 30 minutes and can only be used once.\n"
+                "If you did not request this, you can ignore this email.\n"
+            ),
+        }
+        req = URLRequest(
+            endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "MCTC-Silang-Amadeo/1.0",
+            },
+            method="POST",
+        )
+        with urlopen(req, timeout=20) as response:
+            status = getattr(response, "status", response.getcode())
+            body = response.read().decode("utf-8", errors="replace")
+            if 200 <= status < 300:
+                try:
+                    result = json.loads(body)
+                except Exception:
+                    result = {}
+                if result.get("success") is False:
+                    return False, result.get("message", "FormSubmit did not accept the request.")
+                return True, (
+                    "Password reset email sent. If this is the first time "
+                    "using FormSubmit for this email address, check the "
+                    "mailbox for an activation message and confirm it."
+                )
+            return False, f"FormSubmit returned HTTP {status}: {body[:500]}"
+    except HTTPError as exc:
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            detail = str(exc)
+        return False, f"FormSubmit rejected the email (HTTP {exc.code}): {detail[:500]}"
+    except URLError as exc:
+        return False, f"Could not reach the free email service: {exc.reason}"
+    except Exception as exc:
+        return False, f"Free email service error: {type(exc).__name__}: {exc}"
+
+
 def send_reset_email(recipient, reset_url):
-    """Choose an HTTPS mail transport first, then SMTP as a last resort."""
+    """Try zero-cost HTTPS email first, then configured providers."""
+    # $0 path: no Render SMTP ports and no API key required.
+    sent, details = send_formsubmit_reset_email(recipient, reset_url)
+    if sent:
+        return sent, details
+
+    # Optional configured providers remain available as fallbacks.
     if EMAILJS_SERVICE_ID and EMAILJS_TEMPLATE_ID and EMAILJS_PUBLIC_KEY:
         return send_emailjs_reset_email(recipient, reset_url)
     if RESEND_API_KEY:
         return send_resend_reset_email(recipient, reset_url)
     if GMAIL_APP_PASSWORD:
         return send_gmail_reset_email(recipient, reset_url)
-    return False, (
-        "Free email is not configured yet. Add EMAILJS_SERVICE_ID, "
-        "EMAILJS_TEMPLATE_ID, and EMAILJS_PUBLIC_KEY in Render. "
-        "EmailJS is the $0 option and can use your Gmail account."
-    )
+    return False, details
 
 
 # ================================================================
@@ -1878,7 +1948,7 @@ def forgot_password():
     <section class="card centered" style="max-width:620px;margin:45px auto">
         <h1>🔐 {tr('forgot_password_title')}</h1>
         <p class="small">{tr('forgot_password_help')}</p>
-        <p class="small">Email delivery uses the free EmailJS HTTPS service, so it works on Render Free without Gmail SMTP.</p>
+        <p class="small">Free email delivery uses HTTPS, so it does not require Gmail SMTP or a paid Render plan. On first use, FormSubmit may ask the mailbox owner to activate the email address.</p>
         <form method="post" autocomplete="off">
             <label for="identifier">Username or registered email</label>
             <input id="identifier" name="identifier" autocomplete="username" required>
