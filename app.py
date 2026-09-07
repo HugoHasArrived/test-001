@@ -113,11 +113,16 @@ GOOGLE_MAPS_URL = (
 
 # Password-reset email configuration.
 #
-# IMPORTANT FOR RENDER FREE SERVICES:
-# Render Free web services block outbound SMTP ports 25/465/587.
-# Therefore, the app supports an HTTPS email API (Resend) first, which
-# works over normal HTTPS and can deliver to Gmail inboxes.
-# Gmail SMTP remains available as a fallback for paid Render services.
+# FREE-FIRST EMAIL DELIVERY:
+# EmailJS offers a $0 plan and a REST API over normal HTTPS, so it works
+# from Render Free without using blocked SMTP ports. EmailJS can be connected
+# to Gmail and can send password-reset messages through that connected Gmail
+# account. Resend is kept as a second HTTPS fallback. Gmail SMTP is retained
+# only for deployments where outbound SMTP is permitted.
+EMAILJS_SERVICE_ID = os.environ.get("EMAILJS_SERVICE_ID", "").strip()
+EMAILJS_TEMPLATE_ID = os.environ.get("EMAILJS_TEMPLATE_ID", "").strip()
+EMAILJS_PUBLIC_KEY = os.environ.get("EMAILJS_PUBLIC_KEY", "").strip()
+EMAILJS_PRIVATE_KEY = os.environ.get("EMAILJS_PRIVATE_KEY", "").strip()
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
 MAIL_FROM = os.environ.get("MAIL_FROM", "onboarding@resend.dev").strip()
 GMAIL_USERNAME = os.environ.get("GMAIL_USERNAME", "josehr.tan@gmail.com").strip()
@@ -584,16 +589,71 @@ def send_gmail_reset_email(recipient, reset_url):
         return False, f"Gmail SMTP error: {type(exc).__name__}: {exc}"
 
 
+def send_emailjs_reset_email(recipient, reset_url):
+    """Send password-reset mail through EmailJS over HTTPS.
+
+    EmailJS is the preferred free transport because Render Free blocks
+    outbound SMTP ports. The EmailJS template should send to {{to_email}}
+    and include {{username}} and {{reset_url}} in its body.
+    """
+    if not (EMAILJS_SERVICE_ID and EMAILJS_TEMPLATE_ID and EMAILJS_PUBLIC_KEY):
+        return False, "EmailJS is not configured."
+
+    payload = {
+        "service_id": EMAILJS_SERVICE_ID,
+        "template_id": EMAILJS_TEMPLATE_ID,
+        "user_id": EMAILJS_PUBLIC_KEY,
+        "template_params": {
+            "to_email": recipient,
+            "username": "Court Staff",
+            "reset_url": reset_url,
+            "expires_minutes": "30",
+            "court_name": COURT_NAME,
+        },
+    }
+    if EMAILJS_PRIVATE_KEY:
+        payload["accessToken"] = EMAILJS_PRIVATE_KEY
+
+    import json
+    request = URLRequest(
+        "https://api.emailjs.com/api/v1.0/email/send",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "MCTC-Silang-Amadeo/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            status = getattr(response, "status", response.getcode())
+            if 200 <= status < 300:
+                return True, "Password reset email sent."
+            return False, f"EmailJS returned HTTP {status}."
+    except HTTPError as exc:
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            detail = str(exc)
+        return False, f"EmailJS rejected the email (HTTP {exc.code}): {detail[:500]}"
+    except URLError as exc:
+        return False, f"Could not reach EmailJS: {exc.reason}"
+    except Exception as exc:
+        return False, f"EmailJS error: {type(exc).__name__}: {exc}"
+
+
 def send_reset_email(recipient, reset_url):
-    """Choose a mail transport that works in the current deployment."""
+    """Choose an HTTPS mail transport first, then SMTP as a last resort."""
+    if EMAILJS_SERVICE_ID and EMAILJS_TEMPLATE_ID and EMAILJS_PUBLIC_KEY:
+        return send_emailjs_reset_email(recipient, reset_url)
     if RESEND_API_KEY:
         return send_resend_reset_email(recipient, reset_url)
     if GMAIL_APP_PASSWORD:
         return send_gmail_reset_email(recipient, reset_url)
     return False, (
-        "Email sending is not configured. On Render Free, add RESEND_API_KEY "
-        "and MAIL_FROM. On a paid service, Gmail SMTP can be used with "
-        "GMAIL_USERNAME and GMAIL_APP_PASSWORD."
+        "Free email is not configured yet. Add EMAILJS_SERVICE_ID, "
+        "EMAILJS_TEMPLATE_ID, and EMAILJS_PUBLIC_KEY in Render. "
+        "EmailJS is the $0 option and can use your Gmail account."
     )
 
 
@@ -1818,6 +1878,7 @@ def forgot_password():
     <section class="card centered" style="max-width:620px;margin:45px auto">
         <h1>🔐 {tr('forgot_password_title')}</h1>
         <p class="small">{tr('forgot_password_help')}</p>
+        <p class="small">Email delivery uses the free EmailJS HTTPS service, so it works on Render Free without Gmail SMTP.</p>
         <form method="post" autocomplete="off">
             <label for="identifier">Username or registered email</label>
             <input id="identifier" name="identifier" autocomplete="username" required>
