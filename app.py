@@ -11,6 +11,8 @@ from pathlib import Path
 from functools import wraps
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote_plus
+from urllib.request import Request as URLRequest, urlopen
+from urllib.error import HTTPError, URLError
 
 from flask import (
     Flask,
@@ -109,7 +111,15 @@ GOOGLE_MAPS_URL = (
     "https://www.google.com/maps/search/?api=1&query=" + MAP_QUERY
 )
 
-# Gmail password-reset settings. Configure GMAIL_APP_PASSWORD in Render.
+# Password-reset email configuration.
+#
+# IMPORTANT FOR RENDER FREE SERVICES:
+# Render Free web services block outbound SMTP ports 25/465/587.
+# Therefore, the app supports an HTTPS email API (Resend) first, which
+# works over normal HTTPS and can deliver to Gmail inboxes.
+# Gmail SMTP remains available as a fallback for paid Render services.
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
+MAIL_FROM = os.environ.get("MAIL_FROM", "onboarding@resend.dev").strip()
 GMAIL_USERNAME = os.environ.get("GMAIL_USERNAME", "josehr.tan@gmail.com").strip()
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "").strip()
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com").strip()
@@ -489,12 +499,60 @@ def build_public_url(path):
     return base + path
 
 
+def send_resend_reset_email(recipient, reset_url):
+    """Send password-reset mail through Resend's HTTPS API.
+
+    This works on Render Free because it uses HTTPS rather than SMTP.
+    """
+    if not RESEND_API_KEY:
+        return False, "Resend is not configured."
+
+    payload = {
+        "from": MAIL_FROM,
+        "to": [recipient],
+        "subject": "MCTC Silang-Amadeo Staff Password Reset",
+        "text": (
+            "Municipal Circuit Trial Court of Silang-Amadeo, Cavite\n\n"
+            "A password reset was requested for your staff account.\n\n"
+            "Open this secure link to create a new password:\n"
+            f"{reset_url}\n\n"
+            "The link expires in 30 minutes and can only be used once.\n"
+            "If you did not request this, you may ignore this email.\n"
+        ),
+    }
+    import json
+    request = URLRequest(
+        "https://api.resend.com/emails",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": "MCTC-Silang-Amadeo/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            status = getattr(response, "status", response.getcode())
+            if 200 <= status < 300:
+                return True, "Password reset email sent."
+            return False, f"Email service returned HTTP {status}."
+    except HTTPError as exc:
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            detail = str(exc)
+        return False, f"Resend rejected the email (HTTP {exc.code}): {detail[:500]}"
+    except URLError as exc:
+        return False, f"Could not reach the email service: {exc.reason}"
+    except Exception as exc:
+        return False, f"Email service error: {type(exc).__name__}: {exc}"
+
+
 def send_gmail_reset_email(recipient, reset_url):
+    """Send through Gmail SMTP. Used on paid Render plans or other hosts."""
     if not GMAIL_USERNAME or not GMAIL_APP_PASSWORD:
-        return False, (
-            "Gmail is not configured. Add GMAIL_USERNAME and GMAIL_APP_PASSWORD "
-            "in Render Environment Variables."
-        )
+        return False, "Gmail SMTP is not configured."
 
     message = EmailMessage()
     message["Subject"] = "MCTC Silang-Amadeo Staff Password Reset"
@@ -523,7 +581,20 @@ def send_gmail_reset_email(recipient, reset_url):
                 server.send_message(message)
         return True, "Password reset email sent."
     except Exception as exc:
-        return False, f"Gmail could not send the reset email: {type(exc).__name__}: {exc}"
+        return False, f"Gmail SMTP error: {type(exc).__name__}: {exc}"
+
+
+def send_reset_email(recipient, reset_url):
+    """Choose a mail transport that works in the current deployment."""
+    if RESEND_API_KEY:
+        return send_resend_reset_email(recipient, reset_url)
+    if GMAIL_APP_PASSWORD:
+        return send_gmail_reset_email(recipient, reset_url)
+    return False, (
+        "Email sending is not configured. On Render Free, add RESEND_API_KEY "
+        "and MAIL_FROM. On a paid service, Gmail SMTP can be used with "
+        "GMAIL_USERNAME and GMAIL_APP_PASSWORD."
+    )
 
 
 # ================================================================
@@ -1728,7 +1799,7 @@ def forgot_password():
         connection.close()
 
         reset_url = build_public_url(url_for("reset_password", token=raw_token))
-        sent, details = send_gmail_reset_email(staff["email"], reset_url)
+        sent, details = send_reset_email(staff["email"], reset_url)
         if sent:
             audit("password_reset_requested", staff["username"])
             flash(generic_message, "success")
