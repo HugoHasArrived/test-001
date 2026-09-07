@@ -11,8 +11,6 @@ from pathlib import Path
 from functools import wraps
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote_plus
-from urllib.request import Request as URLRequest, urlopen
-from urllib.error import HTTPError, URLError
 
 from flask import (
     Flask,
@@ -29,23 +27,23 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 
-# ================================================================
-# APPLICATION CONFIGURATION
-# ================================================================
+                                                                  
+                           
+                                                                  
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# PERSISTENT DATA STORAGE
-#
-# The database and every uploaded file are stored together under DATA_DIR.
-# On Render, DATA_DIR MUST point to the mounted Persistent Disk (normally
-# /var/data). This makes cases, hearings, notices, laws, requirements,
-# staff accounts, and the Tuesday schedule survive redeploys and restarts.
-# A new phone/computer will see the same server-side data automatically.
-#
-# IMPORTANT: a normal Render service filesystem is ephemeral. The app will
-# therefore refuse to run on Render when /var/data is not writable instead
-# of silently falling back to a temporary folder and losing data later.
+                         
+ 
+                                                                          
+                                                                         
+                                                                      
+                                                                          
+                                                                        
+ 
+                                                                          
+                                                                          
+                                                                       
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/var/data"))
 
 try:
@@ -54,11 +52,11 @@ try:
 except OSError:
     _data_dir_ok = False
 
-# Never crash the web service just because a Render Persistent Disk has not
-# been attached yet. When /var/data is available, it is used for durable
-# storage. Otherwise the app falls back to the service directory so the site
-# can still boot. Note: the fallback is ephemeral on Render; attach a
-# Persistent Disk and set DATA_DIR=/var/data to make data survive deploys.
+                                                                           
+                                                                        
+                                                                            
+                                                                     
+                                                                          
 if not _data_dir_ok:
     DATA_DIR = Path(os.environ.get("FALLBACK_DATA_DIR", BASE_DIR / "data"))
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -92,9 +90,9 @@ if os.environ.get("RENDER"):
     app.config["SESSION_COOKIE_SECURE"] = True
 
 
-# ================================================================
-# COURT INFORMATION
-# ================================================================
+                                                                  
+                   
+                                                                  
 
 COURT_NAME = "Municipal Circuit Trial Court of Silang-Amadeo, Cavite"
 COURT_SHORT_NAME = "MCTC Silang-Amadeo"
@@ -111,20 +109,7 @@ GOOGLE_MAPS_URL = (
     "https://www.google.com/maps/search/?api=1&query=" + MAP_QUERY
 )
 
-# Password-reset email configuration.
-#
-# FREE-FIRST EMAIL DELIVERY:
-# EmailJS offers a $0 plan and a REST API over normal HTTPS, so it works
-# from Render Free without using blocked SMTP ports. EmailJS can be connected
-# to Gmail and can send password-reset messages through that connected Gmail
-# account. Resend is kept as a second HTTPS fallback. Gmail SMTP is retained
-# only for deployments where outbound SMTP is permitted.
-EMAILJS_SERVICE_ID = os.environ.get("EMAILJS_SERVICE_ID", "").strip()
-EMAILJS_TEMPLATE_ID = os.environ.get("EMAILJS_TEMPLATE_ID", "").strip()
-EMAILJS_PUBLIC_KEY = os.environ.get("EMAILJS_PUBLIC_KEY", "").strip()
-EMAILJS_PRIVATE_KEY = os.environ.get("EMAILJS_PRIVATE_KEY", "").strip()
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
-MAIL_FROM = os.environ.get("MAIL_FROM", "onboarding@resend.dev").strip()
+                                                                        
 GMAIL_USERNAME = os.environ.get("GMAIL_USERNAME", "josehr.tan@gmail.com").strip()
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "").strip()
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com").strip()
@@ -142,9 +127,9 @@ ALLOWED_EXTENSIONS = {
 IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
 
 
-# ================================================================
-# TRANSLATIONS
-# ================================================================
+                                                                  
+              
+                                                                  
 
 T = {
     "en": {
@@ -286,12 +271,12 @@ def current_theme():
     return theme if theme in {"light", "dark"} else "light"
 
 
-# ================================================================
-# DATABASE
-# ================================================================
-# SQLite is intentionally stored on DATA_DIR, alongside uploads, so both
-# structured records and uploaded documents/photos use the same persistent
-# storage location.
+                                                                  
+          
+                                                                  
+                                                                        
+                                                                          
+                   
 
 def db():
     connection = sqlite3.connect(DB_PATH, timeout=30)
@@ -416,12 +401,12 @@ def initialize_database():
         """
     )
 
-    # Migrate older databases that may still have a Pending status.
+                                                                   
     connection.execute(
         "UPDATE cases SET status = 'Active' WHERE status = 'Pending'"
     )
 
-    # Seed required requirement records.
+                                        
     requirement_seeds = [
         (
             "bond",
@@ -458,8 +443,8 @@ def initialize_database():
                 ),
             )
 
-    # Primary administrator. Existing installations are migrated to the
-    # requested username, email address, and initial password.
+                                                                       
+                                                              
     admin = connection.execute(
         "SELECT * FROM staff WHERE lower(username) = 'admin' LIMIT 1"
     ).fetchone()
@@ -481,8 +466,8 @@ def initialize_database():
             ),
         )
     else:
-        # Keep the administrator's current password. Only correct the account
-        # identity/role and reactivate the account if necessary.
+                                                                             
+                                                                
         connection.execute(
             "UPDATE staff SET username = ?, email = ?, role = ?, active = 1 WHERE id = ?",
             ("Admin", "josehr.tan@gmail.com", "admin", admin["id"]),
@@ -504,60 +489,12 @@ def build_public_url(path):
     return base + path
 
 
-def send_resend_reset_email(recipient, reset_url):
-    """Send password-reset mail through Resend's HTTPS API.
-
-    This works on Render Free because it uses HTTPS rather than SMTP.
-    """
-    if not RESEND_API_KEY:
-        return False, "Resend is not configured."
-
-    payload = {
-        "from": MAIL_FROM,
-        "to": [recipient],
-        "subject": "MCTC Silang-Amadeo Staff Password Reset",
-        "text": (
-            "Municipal Circuit Trial Court of Silang-Amadeo, Cavite\n\n"
-            "A password reset was requested for your staff account.\n\n"
-            "Open this secure link to create a new password:\n"
-            f"{reset_url}\n\n"
-            "The link expires in 30 minutes and can only be used once.\n"
-            "If you did not request this, you may ignore this email.\n"
-        ),
-    }
-    import json
-    request = URLRequest(
-        "https://api.resend.com/emails",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {RESEND_API_KEY}",
-            "Content-Type": "application/json",
-            "User-Agent": "MCTC-Silang-Amadeo/1.0",
-        },
-        method="POST",
-    )
-    try:
-        with urlopen(request, timeout=20) as response:
-            status = getattr(response, "status", response.getcode())
-            if 200 <= status < 300:
-                return True, "Password reset email sent."
-            return False, f"Email service returned HTTP {status}."
-    except HTTPError as exc:
-        try:
-            detail = exc.read().decode("utf-8", errors="replace")
-        except Exception:
-            detail = str(exc)
-        return False, f"Resend rejected the email (HTTP {exc.code}): {detail[:500]}"
-    except URLError as exc:
-        return False, f"Could not reach the email service: {exc.reason}"
-    except Exception as exc:
-        return False, f"Email service error: {type(exc).__name__}: {exc}"
-
-
 def send_gmail_reset_email(recipient, reset_url):
-    """Send through Gmail SMTP. Used on paid Render plans or other hosts."""
     if not GMAIL_USERNAME or not GMAIL_APP_PASSWORD:
-        return False, "Gmail SMTP is not configured."
+        return False, (
+            "Gmail is not configured. Add GMAIL_USERNAME and GMAIL_APP_PASSWORD "
+            "in Render Environment Variables."
+        )
 
     message = EmailMessage()
     message["Subject"] = "MCTC Silang-Amadeo Staff Password Reset"
@@ -586,150 +523,12 @@ def send_gmail_reset_email(recipient, reset_url):
                 server.send_message(message)
         return True, "Password reset email sent."
     except Exception as exc:
-        return False, f"Gmail SMTP error: {type(exc).__name__}: {exc}"
+        return False, f"Gmail could not send the reset email: {type(exc).__name__}: {exc}"
 
 
-def send_emailjs_reset_email(recipient, reset_url):
-    """Send password-reset mail through EmailJS over HTTPS.
-
-    EmailJS is the preferred free transport because Render Free blocks
-    outbound SMTP ports. The EmailJS template should send to {{to_email}}
-    and include {{username}} and {{reset_url}} in its body.
-    """
-    if not (EMAILJS_SERVICE_ID and EMAILJS_TEMPLATE_ID and EMAILJS_PUBLIC_KEY):
-        return False, "EmailJS is not configured."
-
-    payload = {
-        "service_id": EMAILJS_SERVICE_ID,
-        "template_id": EMAILJS_TEMPLATE_ID,
-        "user_id": EMAILJS_PUBLIC_KEY,
-        "template_params": {
-            "to_email": recipient,
-            "username": "Court Staff",
-            "reset_url": reset_url,
-            "expires_minutes": "30",
-            "court_name": COURT_NAME,
-        },
-    }
-    if EMAILJS_PRIVATE_KEY:
-        payload["accessToken"] = EMAILJS_PRIVATE_KEY
-
-    import json
-    request = URLRequest(
-        "https://api.emailjs.com/api/v1.0/email/send",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "MCTC-Silang-Amadeo/1.0",
-        },
-        method="POST",
-    )
-    try:
-        with urlopen(request, timeout=20) as response:
-            status = getattr(response, "status", response.getcode())
-            if 200 <= status < 300:
-                return True, "Password reset email sent."
-            return False, f"EmailJS returned HTTP {status}."
-    except HTTPError as exc:
-        try:
-            detail = exc.read().decode("utf-8", errors="replace")
-        except Exception:
-            detail = str(exc)
-        return False, f"EmailJS rejected the email (HTTP {exc.code}): {detail[:500]}"
-    except URLError as exc:
-        return False, f"Could not reach EmailJS: {exc.reason}"
-    except Exception as exc:
-        return False, f"EmailJS error: {type(exc).__name__}: {exc}"
-
-
-def send_formsubmit_reset_email(recipient, reset_url):
-    """Send a password-reset email through FormSubmit over HTTPS.
-
-    FormSubmit is a zero-cost form-to-email service. The first time an
-    address is used, the recipient may receive an activation email from
-    FormSubmit and must confirm it; later submissions are forwarded to that
-    mailbox. This avoids SMTP ports, which are commonly blocked on free hosts.
-    """
-    try:
-        import json
-        from urllib.parse import quote
-
-        endpoint = (
-            "https://formsubmit.co/ajax/"
-            + quote(recipient, safe="@")
-        )
-        payload = {
-            "_subject": "MCTC Silang-Amadeo Staff Password Reset",
-            "_template": "box",
-            "_captcha": "true",
-            "name": "MCTC Silang-Amadeo",
-            "email": recipient,
-            "message": (
-                "A password reset was requested for your staff account.\n\n"
-                "Use this secure one-time link to create a new password:\n"
-                f"{reset_url}\n\n"
-                "This link expires in 30 minutes and can only be used once.\n"
-                "If you did not request this, you can ignore this email.\n"
-            ),
-        }
-        req = URLRequest(
-            endpoint,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "User-Agent": "MCTC-Silang-Amadeo/1.0",
-            },
-            method="POST",
-        )
-        with urlopen(req, timeout=20) as response:
-            status = getattr(response, "status", response.getcode())
-            body = response.read().decode("utf-8", errors="replace")
-            if 200 <= status < 300:
-                try:
-                    result = json.loads(body)
-                except Exception:
-                    result = {}
-                if result.get("success") is False:
-                    return False, result.get("message", "FormSubmit did not accept the request.")
-                return True, (
-                    "Password reset email sent. If this is the first time "
-                    "using FormSubmit for this email address, check the "
-                    "mailbox for an activation message and confirm it."
-                )
-            return False, f"FormSubmit returned HTTP {status}: {body[:500]}"
-    except HTTPError as exc:
-        try:
-            detail = exc.read().decode("utf-8", errors="replace")
-        except Exception:
-            detail = str(exc)
-        return False, f"FormSubmit rejected the email (HTTP {exc.code}): {detail[:500]}"
-    except URLError as exc:
-        return False, f"Could not reach the free email service: {exc.reason}"
-    except Exception as exc:
-        return False, f"Free email service error: {type(exc).__name__}: {exc}"
-
-
-def send_reset_email(recipient, reset_url):
-    """Try zero-cost HTTPS email first, then configured providers."""
-    # $0 path: no Render SMTP ports and no API key required.
-    sent, details = send_formsubmit_reset_email(recipient, reset_url)
-    if sent:
-        return sent, details
-
-    # Optional configured providers remain available as fallbacks.
-    if EMAILJS_SERVICE_ID and EMAILJS_TEMPLATE_ID and EMAILJS_PUBLIC_KEY:
-        return send_emailjs_reset_email(recipient, reset_url)
-    if RESEND_API_KEY:
-        return send_resend_reset_email(recipient, reset_url)
-    if GMAIL_APP_PASSWORD:
-        return send_gmail_reset_email(recipient, reset_url)
-    return False, details
-
-
-# ================================================================
-# REQUIREMENT CONTENT FROM THE SUPPLIED PHOTOS
-# ================================================================
+                                                                  
+                                              
+                                                                  
 
 BOND_REQUIREMENTS = [
     "Personal Data (form from court)",
@@ -752,9 +551,9 @@ BOND_REQUIREMENTS = [
 ]
 
 
-# ================================================================
-# SECURITY / AUTH HELPERS
-# ================================================================
+                                                                  
+                         
+                                                                  
 
 def audit(action, target=""):
     try:
@@ -827,9 +626,9 @@ def delete_uploaded_file(filename):
             pass
 
 
-# ================================================================
-# COMMON PAGE STYLE
-# ================================================================
+                                                                  
+                   
+                                                                  
 
 STYLE = r"""
 :root {
@@ -1260,9 +1059,9 @@ footer p { margin: 8px 0; }
 """
 
 
-# ================================================================
-# HEADER / PAGE RENDERING
-# ================================================================
+                                                                  
+                         
+                                                                  
 
 def render_page(title, body, staff_page=False):
     theme = current_theme()
@@ -1274,8 +1073,8 @@ def render_page(title, body, staff_page=False):
     nav = []
 
     if staff_page or session.get("staff_logged_in", False):
-        # Staff-only navigation.
-        # Keep the staff area separate from the civilian navigation.
+                                
+                                                                    
         nav.append(
             f"<img class='nav-logo' src='{url_for('static', filename=MCTC_LOGO)}' "
             f"alt='MCTC Silang-Amadeo logo'>"
@@ -1322,7 +1121,7 @@ def render_page(title, body, staff_page=False):
             f"alt='Supreme Court of the Philippines seal'>"
         )
     else:
-        # Exact civilian order requested by the project owner.
+                                                              
         nav.append(
             f"<img class='nav-logo' src='{url_for('static', filename=MCTC_LOGO)}' "
             f"alt='MCTC Silang-Amadeo logo'>"
@@ -1426,9 +1225,9 @@ def lang_value():
     return value if value in T else "en"
 
 
-# ================================================================
-# PUBLIC HOME
-# ================================================================
+                                                                  
+             
+                                                                  
 
 @app.route("/")
 def home():
@@ -1581,9 +1380,9 @@ def news():
     return render_page(tr("news"), body)
 
 
-# ================================================================
-# PUBLIC CASE SEARCH
-# ================================================================
+                                                                  
+                    
+                                                                  
 
 @app.route("/search", methods=["GET", "POST"])
 def search_cases():
@@ -1701,9 +1500,9 @@ def public_case(case_id):
     return render_page(tr("cases"), body)
 
 
-# ================================================================
-# PUBLIC REQUIREMENTS
-# ================================================================
+                                                                  
+                     
+                                                                  
 
 @app.route("/requirements")
 def requirements():
@@ -1765,9 +1564,9 @@ def requirements():
     return render_page(tr("requirements"), body)
 
 
-# ================================================================
-# PUBLIC TUESDAY SCHEDULE
-# ================================================================
+                                                                  
+                         
+                                                                  
 
 @app.route("/calendar")
 def public_calendar():
@@ -1813,18 +1612,18 @@ def public_calendar():
     return render_page(tr("calendar"), body)
 
 
-# ================================================================
-# PUBLIC UPLOAD ROUTE
-# ================================================================
+                                                                  
+                     
+                                                                  
 
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
 
-# ================================================================
-# STAFF LOGIN / LOGOUT
-# ================================================================
+                                                                  
+                      
+                                                                  
 
 @app.route("/staff/login", methods=["GET", "POST"])
 def staff_login():
@@ -1929,7 +1728,7 @@ def forgot_password():
         connection.close()
 
         reset_url = build_public_url(url_for("reset_password", token=raw_token))
-        sent, details = send_reset_email(staff["email"], reset_url)
+        sent, details = send_gmail_reset_email(staff["email"], reset_url)
         if sent:
             audit("password_reset_requested", staff["username"])
             flash(generic_message, "success")
@@ -1948,7 +1747,6 @@ def forgot_password():
     <section class="card centered" style="max-width:620px;margin:45px auto">
         <h1>🔐 {tr('forgot_password_title')}</h1>
         <p class="small">{tr('forgot_password_help')}</p>
-        <p class="small">Free email delivery uses HTTPS, so it does not require Gmail SMTP or a paid Render plan. On first use, FormSubmit may ask the mailbox owner to activate the email address.</p>
         <form method="post" autocomplete="off">
             <label for="identifier">Username or registered email</label>
             <input id="identifier" name="identifier" autocomplete="username" required>
@@ -2134,9 +1932,9 @@ def logout():
     return response
 
 
-# ================================================================
-# STAFF DASHBOARD
-# ================================================================
+                                                                  
+                 
+                                                                  
 
 @app.route("/staff")
 @app.route("/staff/dashboard")
@@ -2198,9 +1996,9 @@ def staff_dashboard():
     return render_page(tr("staff_dashboard"), body, staff_page=True)
 
 
-# ================================================================
-# STAFF CASES
-# ================================================================
+                                                                  
+             
+                                                                  
 
 @app.route("/staff/cases")
 @staff_required
@@ -2421,9 +2219,9 @@ def staff_delete_case(case_id):
     return redirect(url_for("staff_cases"))
 
 
-# ================================================================
-# STAFF HEARING EDITOR
-# ================================================================
+                                                                  
+                      
+                                                                  
 
 @app.route("/staff/cases/<int:case_id>/hearing", methods=["GET", "POST"])
 @staff_required
@@ -2539,9 +2337,9 @@ def staff_hearing(case_id):
     return render_page(tr("hearing"), body, staff_page=True)
 
 
-# ================================================================
-# STAFF TUESDAY SCHEDULE UPLOAD
-# ================================================================
+                                                                  
+                               
+                                                                  
 
 @app.route("/staff/calendar")
 @staff_required
@@ -2666,9 +2464,9 @@ def delete_schedule():
     return redirect(url_for("staff_calendar"))
 
 
-# ================================================================
-# STAFF NOTICES
-# ================================================================
+                                                                  
+               
+                                                                  
 
 @app.route("/staff/notices")
 @staff_required
@@ -2782,9 +2580,9 @@ def delete_notice(notice_id):
     return redirect(url_for("staff_notices"))
 
 
-# ================================================================
-# STAFF LEGAL RESOURCES
-# ================================================================
+                                                                  
+                       
+                                                                  
 
 @app.route("/staff/laws")
 @staff_required
@@ -2912,9 +2710,9 @@ def delete_law(law_id):
     return redirect(url_for("staff_laws"))
 
 
-# ================================================================
-# STAFF REQUIREMENTS
-# ================================================================
+                                                                  
+                    
+                                                                  
 
 @app.route("/staff/requirements")
 @staff_required
@@ -3025,50 +2823,48 @@ def update_requirement(category):
     return redirect(url_for("staff_requirements"))
 
 
-# ================================================================
-# STAFF ACCOUNT MANAGEMENT
-# ================================================================
+                                                                  
+                          
+                                                                  
 
 @app.route("/staff/accounts")
 @admin_required
 def staff_accounts():
     connection = db()
     rows = connection.execute(
-        "SELECT id, username, role, active FROM staff ORDER BY username"
+        "SELECT id, username, email, role, active FROM staff ORDER BY username"
     ).fetchall()
     connection.close()
 
     table = ""
     for row in rows:
         controls = (
-            f"<form method='post' action='{url_for('toggle_staff', staff_id=row['id'])}' style='display:inline-block;margin:3px'>"
+            f"<form method='post' action='{url_for('toggle_staff', staff_id=row['id'])}' style='display:inline'>"
             f"<button type='submit'>{'Disable' if row['active'] else 'Enable'}</button>"
             f"</form>"
-            f"<form method='post' action='{url_for('reset_staff_password', staff_id=row['id'])}' style='display:inline-block;margin:3px'>"
-            f'<button type="submit" class="secondary" onclick="return confirm(\'Generate a new temporary password for this account?\')">🔑 Set/Reset Password</button>'
-            f"</form>"
         )
-        if row["username"].lower() != "admin":
+        if row["username"] != "admin":
             controls += (
-                f" <form method='post' action='{url_for('delete_staff', staff_id=row['id'])}' style='display:inline-block;margin:3px'>"
-                f'<button class="danger" type="submit" onclick="return confirm(\'Delete this account?\')">{tr("delete")}</button>'
+                f" <form method='post' action='{url_for('delete_staff', staff_id=row['id'])}' style='display:inline'>"
+                f"<button class='danger' type='submit' onclick=\"return confirm('Delete this account?')\">{tr('delete')}</button>"
                 f"</form>"
             )
         table += f"""
         <tr>
-            <td><strong>{esc(row['username'])}</strong></td>
+            <td>{esc(row['username'])}</td>
+            <td>{esc(row['email'])}</td>
             <td>{esc(row['role'])}</td>
             <td><span class="status">{'Active' if row['active'] else 'Disabled'}</span></td>
-            <td>🔒 Hidden (secure hash)<br><span class="small">Use Set/Reset Password to generate a new one.</span></td>
             <td>{controls}</td>
         </tr>
         """
-
 
     body = f"""
     <section class="card">
         <h1 class="center">👥 {tr('staff_accounts')}</h1>
         <form method="post" action="{url_for('add_staff')}" autocomplete="off">
+            <label>{tr('email')}</label>
+            <input type="email" name="email" required>
             <label>{tr('username')}</label>
             <input name="username" required>
             <label>{tr('password')}</label>
@@ -3081,7 +2877,7 @@ def staff_accounts():
 
     <section class="card table-wrap">
         <table>
-            <thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Password</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>{table}</tbody>
         </table>
     </section>
@@ -3094,16 +2890,14 @@ def staff_accounts():
 def add_staff():
     username = request.form.get("username", "").strip()
     email = request.form.get("email", "").strip()
-    if not email:
-        email = ""
     password = request.form.get("password", "")
     role = request.form.get("role", "staff")
 
     if role not in {"staff", "admin"}:
         role = "staff"
 
-    if not username or not password:
-        flash("Username and password are required.", "danger")
+    if not username or not email or not password:
+        flash("Username, email and password are required.", "danger")
         return redirect(url_for("staff_accounts"))
 
     if len(password) < 8:
@@ -3129,60 +2923,12 @@ def add_staff():
         connection.commit()
     except sqlite3.IntegrityError:
         connection.close()
-        flash("That username already exists.", "danger")
+        flash("That username or email already exists.", "danger")
         return redirect(url_for("staff_accounts"))
     connection.close()
     audit("staff_created", username)
-    body = f"""
-    <section class="card centered" style="max-width:700px;margin:45px auto">
-        <h1>✅ Staff Account Created</h1>
-        <p><strong>Username:</strong> {esc(username)}</p>
-        <p><strong>Role:</strong> {esc(role)}</p>
-        <div class="card" style="margin-top:20px">
-            <h2>🔑 Temporary Password</h2>
-            <p style="font-size:1.35rem;font-weight:800;word-break:break-all">{esc(password)}</p>
-            <p class="small">This password is shown only now. It is stored securely as a hash and cannot be recovered later.</p>
-        </div>
-        <a class="button" href="{url_for('staff_accounts')}">Back to Staff Accounts</a>
-    </section>
-    """
-    return render_page("Staff Account Created", body, staff_page=True)
-
-
-@app.post("/staff/accounts/<int:staff_id>/reset-password")
-@admin_required
-def reset_staff_password(staff_id):
-    connection = db()
-    row = connection.execute(
-        "SELECT id, username, email, role, active FROM staff WHERE id = ?",
-        (staff_id,),
-    ).fetchone()
-    if row is None:
-        connection.close()
-        abort(404)
-
-    temporary_password = secrets.token_urlsafe(12) + "A9!"
-    connection.execute(
-        "UPDATE staff SET password_hash = ? WHERE id = ?",
-        (generate_password_hash(temporary_password), staff_id),
-    )
-    connection.commit()
-    connection.close()
-    audit("staff_password_reset", row["username"])
-
-    body = f"""
-    <section class="card centered" style="max-width:700px;margin:45px auto">
-        <h1>🔑 Password Reset</h1>
-        <p><strong>Username:</strong> {esc(row['username'])}</p>
-        <div class="card" style="margin-top:20px">
-            <h2>New Temporary Password</h2>
-            <p style="font-size:1.35rem;font-weight:800;word-break:break-all">{esc(temporary_password)}</p>
-            <p class="small">This password is displayed only on this page. It is stored securely as a hash and cannot be viewed again later.</p>
-        </div>
-        <a class="button" href="{url_for('staff_accounts')}">Back to Staff Accounts</a>
-    </section>
-    """
-    return render_page("Password Reset", body, staff_page=True)
+    flash("Staff account created successfully.", "success")
+    return redirect(url_for("staff_accounts"))
 
 
 @app.post("/staff/accounts/<int:staff_id>/toggle")
@@ -3234,9 +2980,9 @@ def delete_staff(staff_id):
     return redirect(url_for("staff_accounts"))
 
 
-# ================================================================
-# LANGUAGE / THEME
-# ================================================================
+                                                                  
+                  
+                                                                  
 
 @app.route("/language/<language>")
 def change_language(language):
@@ -3254,9 +3000,9 @@ def change_theme(theme):
     return redirect(request.referrer or url_for("home"))
 
 
-# ================================================================
-# HEALTH / SECURITY / ERRORS
-# ================================================================
+                                                                  
+                            
+                                                                  
 
 @app.route("/health")
 def health():
@@ -3310,9 +3056,9 @@ def error_413(error):
     return render_page("413", body, staff_page=bool(session.get("staff_logged_in"))), 413
 
 
-# ================================================================
-# LOCAL DEVELOPMENT ENTRY POINT
-# ================================================================
+                                                                  
+                               
+                                                                  
 
 if __name__ == "__main__":
     app.run(
@@ -3320,4631 +3066,4631 @@ if __name__ == "__main__":
         port=int(os.environ.get("PORT", "5000")),
         debug=False,
     )
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123! (initial password only; resets/changes are stored securely)
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
-#
-# Tuesday Calendar is not a row-by-row entry system.
-# Staff upload one schedule image or PDF.
-# Civilians see the latest uploaded schedule.
-#
-# Cash bond requirements were removed per the latest project request.
-# Posting Bail Bond requirements remain from the supplied image.
-# Clearance remains Not yet uploaded until an official checklist is supplied.
-#
-# Saved cases use SQLite.
-# For durable Render persistence, configure DATA_DIR=/var/data and mount a disk at /var/data.
-# Without a persistent disk, the fallback local filesystem can disappear after redeploys.
-#
-# Staff passwords are stored as secure hashes.
-# Primary administrator: Admin / ChangeMe123!
-# Change the administrator password before real production use.
-# ================================================================
-# PROJECT IMPLEMENTATION NOTES
-# ================================================================
-# The following documentation lines intentionally remain comments.
-# They do not affect application execution.
-# The executable application above contains the actual Flask routes.
-#
-# Public interface requirements:
-# Home, About Us, Search Case, Tuesday Calendar, Requirements,
-# News and Announcements, Contact Us, Language, Theme, Staff Login.
-#
-# Public header: MCTC seal before Home and Supreme Court seal after Staff Login.
-# Staff header: public civilian navigation is intentionally removed.
-# Staff navigation contains staff management tools only.
-#
-# Case model deliberately excludes a Case Title field.
-# Case status is Active-only in the create/edit interface.
-# Legacy Pending values are migrated to Active during database startup.
-# Courtroom is intentionally excluded from the hearing interface.
-# Plaintiff last name/corporation name is a required search field.
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                                                                                         
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
+ 
+                                                    
+                                         
+                                             
+ 
+                                                                     
+                                                                
+                                                                             
+ 
+                         
+                                                                                             
+                                                                                         
+ 
+                                              
+                                             
+                                                               
+                                                                  
+                              
+                                                                  
+                                                                  
+                                           
+                                                                    
+ 
+                                
+                                                              
+                                                                   
+ 
+                                                                                
+                                                                    
+                                                        
+ 
+                                                      
+                                                          
+                                                                       
+                                                                 
+                                                                  
