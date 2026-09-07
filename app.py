@@ -3041,25 +3041,30 @@ def staff_accounts():
     table = ""
     for row in rows:
         controls = (
-            f"<form method='post' action='{url_for('toggle_staff', staff_id=row['id'])}' style='display:inline'>"
+            f"<form method='post' action='{url_for('toggle_staff', staff_id=row['id'])}' style='display:inline-block;margin:3px'>"
             f"<button type='submit'>{'Disable' if row['active'] else 'Enable'}</button>"
             f"</form>"
+            f"<form method='post' action='{url_for('reset_staff_password', staff_id=row['id'])}' style='display:inline-block;margin:3px'>"
+            f'<button type="submit" class="secondary" onclick="return confirm(\'Generate a new temporary password for this account?\')">🔑 Set/Reset Password</button>'
+            f"</form>"
         )
-        if row["username"] != "admin":
+        if row["username"].lower() != "admin":
             controls += (
-                f" <form method='post' action='{url_for('delete_staff', staff_id=row['id'])}' style='display:inline'>"
-                f"<button class='danger' type='submit' onclick=\"return confirm('Delete this account?')\">{tr('delete')}</button>"
+                f" <form method='post' action='{url_for('delete_staff', staff_id=row['id'])}' style='display:inline-block;margin:3px'>"
+                f'<button class="danger" type="submit" onclick="return confirm(\'Delete this account?\')">{tr("delete")}</button>'
                 f"</form>"
             )
         table += f"""
         <tr>
-            <td>{esc(row['username'])}</td>
+            <td><strong>{esc(row['username'])}</strong></td>
             <td>{esc(row['email'])}</td>
             <td>{esc(row['role'])}</td>
             <td><span class="status">{'Active' if row['active'] else 'Disabled'}</span></td>
+            <td>🔒 Hidden (secure hash)<br><span class="small">Use Set/Reset Password to generate a new one.</span></td>
             <td>{controls}</td>
         </tr>
         """
+
 
     body = f"""
     <section class="card">
@@ -3079,7 +3084,7 @@ def staff_accounts():
 
     <section class="card table-wrap">
         <table>
-            <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Password</th><th>Actions</th></tr></thead>
             <tbody>{table}</tbody>
         </table>
     </section>
@@ -3129,8 +3134,58 @@ def add_staff():
         return redirect(url_for("staff_accounts"))
     connection.close()
     audit("staff_created", username)
-    flash("Staff account created successfully.", "success")
-    return redirect(url_for("staff_accounts"))
+    body = f"""
+    <section class="card centered" style="max-width:700px;margin:45px auto">
+        <h1>✅ Staff Account Created</h1>
+        <p><strong>Username:</strong> {esc(username)}</p>
+        <p><strong>Email:</strong> {esc(email)}</p>
+        <p><strong>Role:</strong> {esc(role)}</p>
+        <div class="card" style="margin-top:20px">
+            <h2>🔑 Temporary Password</h2>
+            <p style="font-size:1.35rem;font-weight:800;word-break:break-all">{esc(password)}</p>
+            <p class="small">This password is shown only now. It is stored securely as a hash and cannot be recovered later.</p>
+        </div>
+        <a class="button" href="{url_for('staff_accounts')}">Back to Staff Accounts</a>
+    </section>
+    """
+    return render_page("Staff Account Created", body, staff_page=True)
+
+
+@app.post("/staff/accounts/<int:staff_id>/reset-password")
+@admin_required
+def reset_staff_password(staff_id):
+    connection = db()
+    row = connection.execute(
+        "SELECT id, username, email, role, active FROM staff WHERE id = ?",
+        (staff_id,),
+    ).fetchone()
+    if row is None:
+        connection.close()
+        abort(404)
+
+    temporary_password = secrets.token_urlsafe(12) + "A9!"
+    connection.execute(
+        "UPDATE staff SET password_hash = ? WHERE id = ?",
+        (generate_password_hash(temporary_password), staff_id),
+    )
+    connection.commit()
+    connection.close()
+    audit("staff_password_reset", row["username"])
+
+    body = f"""
+    <section class="card centered" style="max-width:700px;margin:45px auto">
+        <h1>🔑 Password Reset</h1>
+        <p><strong>Username:</strong> {esc(row['username'])}</p>
+        <p><strong>Email:</strong> {esc(row['email'])}</p>
+        <div class="card" style="margin-top:20px">
+            <h2>New Temporary Password</h2>
+            <p style="font-size:1.35rem;font-weight:800;word-break:break-all">{esc(temporary_password)}</p>
+            <p class="small">This password is displayed only on this page. It is stored securely as a hash and cannot be viewed again later.</p>
+        </div>
+        <a class="button" href="{url_for('staff_accounts')}">Back to Staff Accounts</a>
+    </section>
+    """
+    return render_page("Password Reset", body, staff_page=True)
 
 
 @app.post("/staff/accounts/<int:staff_id>/toggle")
