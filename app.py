@@ -384,61 +384,8 @@ def hash_reset_token(token):
 def build_public_url(path):
     base = PUBLIC_BASE_URL or request.url_root.rstrip("/")
     return base + path
-def send_gmail_reset_email(recipient, reset_url, username="Court Staff"):
-    if not recipient:
-        return False, "The staff account has no registered email address."
-    payload = {
-        "name": f"{COURT_SHORT_NAME} Password Reset",
-        "email": recipient,
-        "_replyto": COURT_EMAIL,
-        "_subject": f"{COURT_SHORT_NAME} Staff Password Reset",
-        "_template": "table",
-        "message": (
-            f"Hello {username},\n\n"
-            "A password reset was requested for your court staff account.\n\n"
-            f"Reset your password here:\n{reset_url}\n\n"
-            "This link expires in 30 minutes and can only be used once.\n\n"
-            f"{COURT_NAME}"
-        ),
-        "_captcha": "false",
-        "_autoresponse": "Your MCTC password reset request has been received.",
-    }
-    try:
-        encoded = json.dumps(payload).encode("utf-8")
-        req = Request(
-            FORMSUBMIT_URL,
-            data=encoded,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "User-Agent": "MCTC-Silang-Amadeo-Portal/1.0",
-            },
-            method="POST",
-        )
-        with urlopen(req, timeout=30) as response:
-            status = getattr(response, "status", 200)
-            raw = response.read().decode("utf-8", "replace").strip()
-        if status < 200 or status >= 300:
-            return False, f"Free email service returned HTTP {status}."
-        try:
-            result = json.loads(raw)
-        except json.JSONDecodeError:
-            return False, f"Free email service returned an unexpected response: {raw[:300]}"
-        success = bool(result.get("success") or result.get("ok"))
-        if success:
-            return True, "Password reset email request accepted. Check the registered Gmail inbox and Spam folder."
-        message = result.get("message") or result.get("error") or "The free email service did not accept the message."
-        return False, str(message)
-    except HTTPError as exc:
-        try:
-            detail = exc.read().decode("utf-8", "replace")
-        except Exception:
-            detail = str(exc)
-        return False, f"Free email service HTTP {exc.code}: {detail[:500]}"
-    except URLError as exc:
-        return False, f"The server could not reach the free email service: {getattr(exc, 'reason', str(exc))}"
-    except Exception as exc:
-        return False, f"Email sending failed: {type(exc).__name__}: {exc}"
+def formsubmit_endpoint(recipient):
+    return f"https://formsubmit.co/ajax/{quote_plus(recipient)}"
 
 @app.route("/staff/login", methods=["GET", "POST"])
 def staff_login():
@@ -485,13 +432,8 @@ def staff_login():
     return render_page(tr("staff_login"), body)
 @app.route("/staff/forgot-password", methods=["GET", "POST"])
 def forgot_password():
-    """Create and email a one-time password-reset link."""
     if request.method == "POST":
         identifier = request.form.get("identifier", "").strip()
-        generic_message = (
-            "If an active staff account matches that username or email, "
-            "a reset link has been sent to the registered email address."
-        )
         if not identifier:
             flash("Please enter your username or registered email address.", "danger")
             return redirect(url_for("forgot_password"))
@@ -508,7 +450,7 @@ def forgot_password():
         ).fetchone()
         if staff is None:
             connection.close()
-            flash(generic_message, "success")
+            flash("If an active staff account matches that username or email, a reset link can be requested.", "success")
             return redirect(url_for("staff_login"))
         connection.execute(
             "UPDATE password_reset_tokens SET used = 1 WHERE staff_id = ? AND used = 0",
@@ -531,20 +473,60 @@ def forgot_password():
         durable_commit(connection)
         connection.close()
         reset_url = build_public_url(url_for("reset_password", token=raw_token))
-        sent, details = send_gmail_reset_email(staff["email"], reset_url, staff["username"])
-        if sent:
-            audit("password_reset_requested", staff["username"])
-            flash(generic_message, "success")
-        else:
-            cleanup = db()
-            cleanup.execute(
-                "UPDATE password_reset_tokens SET used = 1 WHERE token_hash = ?",
-                (hash_reset_token(raw_token),),
-            )
-            durable_commit(cleanup)
-            cleanup.close()
-            flash(details, "danger")
-        return redirect(url_for("staff_login"))
+        endpoint = formsubmit_endpoint(staff["email"])
+        message = (
+            f"Hello {staff['username']},\n\n"
+            "A password reset was requested for your court staff account.\n\n"
+            f"Reset your password here:\n{reset_url}\n\n"
+            "This link expires in 30 minutes and can only be used once.\n\n"
+            f"{COURT_NAME}"
+        )
+        body = f"""
+        <section class="card centered" style="max-width:680px;margin:45px auto">
+            <h1>📧 Reset Email</h1>
+            <p>Sending a secure password reset email to the registered account.</p>
+            <div id="email-status" class="notice warning">Sending reset email...</div>
+            <form id="reset-email-form" action="{esc(endpoint)}" method="post">
+                <input type="hidden" name="name" value="{esc(COURT_SHORT_NAME + ' Password Reset')}">
+                <input type="hidden" name="email" value="{esc(staff['email'])}">
+                <input type="hidden" name="_subject" value="{esc(COURT_SHORT_NAME + ' Staff Password Reset')}">
+                <input type="hidden" name="message" value="{esc(message)}">
+                <input type="hidden" name="_captcha" value="false">
+                <button type="submit">Retry Send</button>
+            </form>
+            <p class="small">Check the registered Gmail inbox and Spam folder. On first use, FormSubmit may send a confirmation email that must be approved.</p>
+            <p><a href="{url_for('staff_login')}">← Back to Staff Login</a></p>
+        </section>
+        <script>
+        (async function() {{
+            const form = document.getElementById('reset-email-form');
+            const status = document.getElementById('email-status');
+            try {{
+                const payload = {{}};
+                for (const element of form.elements) {{
+                    if (element.name) payload[element.name] = element.value;
+                }}
+                const response = await fetch(form.action, {{
+                    method: 'POST',
+                    headers: {{'Content-Type': 'application/json','Accept':'application/json'}},
+                    body: JSON.stringify(payload)
+                }});
+                const data = await response.json();
+                if (data.success) {{
+                    status.className = 'notice success';
+                    status.textContent = 'Reset email sent. Check the registered Gmail inbox and Spam folder.';
+                }} else {{
+                    status.className = 'notice danger';
+                    status.textContent = data.message || 'The email service did not accept the request. Use Retry Send.';
+                }}
+            }} catch (error) {{
+                status.className = 'notice danger';
+                status.textContent = 'The email service could not be reached. Use Retry Send.';
+            }}
+        }})();
+        </script>
+        """
+        return render_page("Reset Email", body)
     body = f"""
     <section class="card centered" style="max-width:620px;margin:45px auto">
         <h1>🔐 {tr('forgot_password_title')}</h1>
@@ -559,6 +541,7 @@ def forgot_password():
     </section>
     """
     return render_page(tr("forgot_password_title"), body)
+
 @app.route("/staff/reset-password/<token>", methods=["GET", "POST"])
 def reset_password(token):
     token_hash = hash_reset_token(token)
