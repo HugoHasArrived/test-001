@@ -7,7 +7,7 @@ import hashlib
 from pathlib import Path
 from functools import wraps
 from datetime import datetime, timezone, timedelta
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 import json
@@ -386,49 +386,50 @@ def build_public_url(path):
     return base + path
 def send_gmail_reset_email(recipient, reset_url, username="Court Staff"):
     if not GOOGLE_APPS_SCRIPT_URL or not GOOGLE_APPS_SCRIPT_SECRET:
-        return False, (
-            "Gmail reset email is not configured. Set GOOGLE_APPS_SCRIPT_URL and "
-            "GOOGLE_APPS_SCRIPT_SECRET in Render Environment Variables."
-        )
-    payload = {
+        return False, "Gmail reset service is not configured. Add GOOGLE_APPS_SCRIPT_URL and GOOGLE_APPS_SCRIPT_SECRET in Render."
+    fields = {
         "secret": GOOGLE_APPS_SCRIPT_SECRET,
         "to": recipient,
         "username": username,
         "reset_url": reset_url,
         "court_name": COURT_NAME,
-        "expires_minutes": 30,
+        "expires_minutes": "30",
     }
     try:
-        encoded = json.dumps(payload).encode("utf-8")
+        encoded = urlencode(fields).encode("utf-8")
         req = Request(
             GOOGLE_APPS_SCRIPT_URL,
             data=encoded,
             headers={
-                "Content-Type": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
                 "User-Agent": "MCTC-Silang-Amadeo-Portal/1.0",
+                "Accept": "application/json,text/plain,*/*",
             },
             method="POST",
         )
         with urlopen(req, timeout=30) as response:
-            raw = response.read().decode("utf-8", "replace")
-        result = json.loads(raw)
-        if isinstance(result, dict) and result.get("ok") is True:
-            return True, "Password reset email sent."
-        if isinstance(result, dict):
-            return False, str(result.get("error") or "Gmail rejected the reset email request.")
-        return False, "Gmail returned an invalid response."
+            status = getattr(response, "status", 200)
+            raw = response.read().decode("utf-8", "replace").strip()
+        if status < 200 or status >= 300:
+            return False, f"Gmail bridge returned HTTP {status}."
+        try:
+            result = json.loads(raw)
+        except json.JSONDecodeError:
+            return False, f"Gmail bridge returned an unexpected response: {raw[:400]}"
+        if result.get("ok") is True:
+            return True, "Password reset email sent. Check the registered Gmail inbox and Spam folder."
+        return False, str(result.get("error") or "The Gmail bridge did not send the email.")
     except HTTPError as exc:
         try:
             detail = exc.read().decode("utf-8", "replace")
         except Exception:
             detail = str(exc)
-        return False, f"Gmail bridge HTTP error {exc.code}: {detail[:500]}"
+        return False, f"Gmail bridge HTTP {exc.code}: {detail[:500]}"
     except URLError as exc:
-        return False, f"Could not reach the Gmail bridge: {exc.reason}"
+        reason = getattr(exc, "reason", str(exc))
+        return False, f"The server could not reach the Gmail bridge: {reason}"
     except TimeoutError:
         return False, "The Gmail bridge timed out. Please try again."
-    except json.JSONDecodeError:
-        return False, "The Gmail bridge returned an invalid response."
     except Exception as exc:
         return False, f"Gmail bridge error: {type(exc).__name__}: {exc}"
 BOND_REQUIREMENTS = [
@@ -1410,6 +1411,24 @@ def staff_login():
     </section>
     """
     return render_page(tr("staff_login"), body)
+@app.route("/staff/gmail-status")
+@staff_required
+def gmail_status():
+    if not GOOGLE_APPS_SCRIPT_URL or not GOOGLE_APPS_SCRIPT_SECRET:
+        return {"configured": False, "message": "Missing GOOGLE_APPS_SCRIPT_URL or GOOGLE_APPS_SCRIPT_SECRET."}, 503
+    try:
+        req = Request(
+            GOOGLE_APPS_SCRIPT_URL,
+            headers={"User-Agent": "MCTC-Silang-Amadeo-Portal/1.0", "Accept": "application/json"},
+            method="GET",
+        )
+        with urlopen(req, timeout=15) as response:
+            raw = response.read().decode("utf-8", "replace").strip()
+            status = getattr(response, "status", 200)
+        return {"configured": True, "reachable": 200 <= status < 300, "bridge_response": raw[:500]}, status
+    except Exception as exc:
+        return {"configured": True, "reachable": False, "error": f"{type(exc).__name__}: {exc}"}, 503
+
 @app.route("/staff/forgot-password", methods=["GET", "POST"])
 def forgot_password():
     """Create and email a one-time password-reset link."""
