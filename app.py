@@ -67,8 +67,6 @@ MAP_QUERY = quote_plus(f"{COURT_NAME}, {COURT_ADDRESS}")
 GOOGLE_MAPS_URL = (
     "https://www.google.com/maps/search/?api=1&query=" + MAP_QUERY
 )
-GOOGLE_APPS_SCRIPT_URL = os.environ.get("GOOGLE_APPS_SCRIPT_URL", "").strip()
-GOOGLE_APPS_SCRIPT_SECRET = os.environ.get("GOOGLE_APPS_SCRIPT_SECRET", "").strip()
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
 ALLOWED_EXTENSIONS = {
     "pdf", "png", "jpg", "jpeg", "webp", "gif",
@@ -1445,167 +1443,11 @@ def staff_login():
             <br>
             <button type="submit">{tr('login') if 'login' in T[lang_value()] else 'Log In'}</button>
         </form>
-        <p class="center" style="margin-top:18px"><a href="{url_for('forgot_password')}">🔐 {tr('forgot_password')}</a></p>
     </section>
     """
     return render_page(tr("staff_login"), body)
-@app.route("/staff/forgot-password", methods=["GET", "POST"])
-def forgot_password():
-    """Create and email a one-time password-reset link."""
-    if request.method == "POST":
-        identifier = request.form.get("identifier", "").strip()
-        generic_message = (
-            "If an active staff account matches that username or email, "
-            "a reset link has been sent to the registered email address."
-        )
-        if not identifier:
-            flash("Please enter your username or registered email address.", "danger")
-            return redirect(url_for("forgot_password"))
-        connection = db()
-        staff = connection.execute(
-            """
-            SELECT id, username, email
-            FROM staff
-            WHERE active = 1
-              AND (lower(username) = lower(?) OR lower(email) = lower(?))
-            LIMIT 1
-            """,
-            (identifier, identifier),
-        ).fetchone()
-        if staff is None:
-            connection.close()
-            flash(generic_message, "success")
-            return redirect(url_for("staff_login"))
-        connection.execute(
-            "UPDATE password_reset_tokens SET used = 1 WHERE staff_id = ? AND used = 0",
-            (staff["id"],),
-        )
-        raw_token = secrets.token_urlsafe(48)
-        connection.execute(
-            """
-            INSERT INTO password_reset_tokens
-            (staff_id, token_hash, expires_at, used, created_at)
-            VALUES (?, ?, ?, 0, ?)
-            """,
-            (
-                staff["id"],
-                hash_reset_token(raw_token),
-                (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
-                now(),
-            ),
-        )
-        durable_commit(connection)
-        connection.close()
-        reset_url = build_public_url(url_for("reset_password", token=raw_token))
-        sent, details = send_gmail_reset_email(staff["email"], reset_url, staff["username"])
-        if sent:
-            audit("password_reset_requested", staff["username"])
-            flash(generic_message, "success")
-        else:
-            cleanup = db()
-            cleanup.execute(
-                "UPDATE password_reset_tokens SET used = 1 WHERE token_hash = ?",
-                (hash_reset_token(raw_token),),
-            )
-            durable_commit(cleanup)
-            cleanup.close()
-            flash(details, "danger")
-        return redirect(url_for("staff_login"))
-    body = f"""
-    <section class="card centered" style="max-width:620px;margin:45px auto">
-        <h1>🔐 {tr('forgot_password_title')}</h1>
-        <p class="small">{tr('forgot_password_help')}</p>
-        <form method="post" autocomplete="off">
-            <label for="identifier">Username or registered email</label>
-            <input id="identifier" name="identifier" autocomplete="username" required>
-            <br>
-            <button type="submit">Send Reset Email</button>
-        </form>
-        <p class="center" style="margin-top:18px"><a href="{url_for('staff_login')}">← Back to Staff Login</a></p>
-    </section>
-    """
-    return render_page(tr("forgot_password_title"), body)
-@app.route("/staff/reset-password/<token>", methods=["GET", "POST"])
-def reset_password(token):
-    token_hash = hash_reset_token(token)
-    connection = db()
-    record = connection.execute(
-        """
-        SELECT pr.id, pr.staff_id, pr.expires_at, pr.used, s.username
-        FROM password_reset_tokens pr
-        JOIN staff s ON s.id = pr.staff_id
-        WHERE pr.token_hash = ? AND s.active = 1
-        LIMIT 1
-        """,
-        (token_hash,),
-    ).fetchone()
-    valid = False
-    if record is not None and not record["used"]:
-        try:
-            valid = datetime.fromisoformat(record["expires_at"]) > datetime.now(timezone.utc)
-        except ValueError:
-            valid = False
-    if not valid:
-        connection.close()
-        body = """
-        <section class="card centered" style="max-width:620px;margin:45px auto">
-            <h1>🔒 Reset Link Invalid or Expired</h1>
-            <p>This password-reset link is invalid, expired, or has already been used.</p>
-            <a class="button" href="/staff/forgot-password">Request a New Reset Link</a>
-        </section>
-        """
-        return render_page("Reset Password", body), 400
-    if request.method == "POST":
-        new_password = request.form.get("new_password", "")
-        confirm_password = request.form.get("confirm_password", "")
-        if len(new_password) < 8:
-            connection.close()
-            flash("New password must contain at least 8 characters.", "danger")
-            return redirect(url_for("reset_password", token=token))
-        if new_password != confirm_password:
-            connection.close()
-            flash("The new passwords do not match.", "danger")
-            return redirect(url_for("reset_password", token=token))
-        staff = connection.execute(
-            "SELECT password_hash, username FROM staff WHERE id = ? AND active = 1",
-            (record["staff_id"],),
-        ).fetchone()
-        if staff is None:
-            connection.close()
-            abort(400)
-        if check_password_hash(staff["password_hash"], new_password):
-            connection.close()
-            flash("New password must be different from the current password.", "danger")
-            return redirect(url_for("reset_password", token=token))
-        connection.execute(
-            "UPDATE staff SET password_hash = ? WHERE id = ?",
-            (generate_password_hash(new_password), record["staff_id"]),
-        )
-        connection.execute(
-            "UPDATE password_reset_tokens SET used = 1 WHERE staff_id = ?",
-            (record["staff_id"],),
-        )
-        durable_commit(connection)
-        connection.close()
-        audit("password_reset_completed", staff["username"])
-        flash("Password reset successfully. You can now log in.", "success")
-        return redirect(url_for("staff_login"))
-    connection.close()
-    body = """
-    <section class="card centered" style="max-width:620px;margin:45px auto">
-        <h1>🔑 Create New Password</h1>
-        <p class="small">Choose a new password for your staff account.</p>
-        <form method="post" autocomplete="off">
-            <label for="new_password">New Password</label>
-            <input id="new_password" type="password" name="new_password" minlength="8" autocomplete="new-password" required>
-            <label for="confirm_password">Confirm New Password</label>
-            <input id="confirm_password" type="password" name="confirm_password" minlength="8" autocomplete="new-password" required>
-            <br>
-            <button type="submit">Save New Password</button>
-        </form>
-    </section>
-    """
-    return render_page("Reset Password", body)
+
+
 @app.route("/staff/change-password", methods=["GET", "POST"])
 @staff_required
 def change_password():
@@ -2496,7 +2338,7 @@ def superadmin_dashboard():
     body = f"""
     <section class="hero">
         <h1>🛡️ Super Admin</h1>
-        <p><strong>Hello everyone, hahahaha. 😈</strong></p>
+        <p><strong>Hello everyone, I like Kavee. 😈</strong></p>
         <p class="small">Full system overview for the authorized super administrator. Passwords and reset tokens are never displayed.</p>
     </section>
     <section class="grid">
