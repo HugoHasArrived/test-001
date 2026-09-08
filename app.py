@@ -8,9 +8,6 @@ from pathlib import Path
 from functools import wraps
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote_plus
-from urllib.request import Request, urlopen
-from urllib.error import URLError, HTTPError
-import json
 from flask import (
     Flask,
     abort,
@@ -67,7 +64,6 @@ MAP_QUERY = quote_plus(f"{COURT_NAME}, {COURT_ADDRESS}")
 GOOGLE_MAPS_URL = (
     "https://www.google.com/maps/search/?api=1&query=" + MAP_QUERY
 )
-PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
 ALLOWED_EXTENSIONS = {
     "pdf", "png", "jpg", "jpeg", "webp", "gif",
     "doc", "docx", "xls", "xlsx", "txt",
@@ -302,14 +298,11 @@ def initialize_database():
             target TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL
         );
-        CREATE TABLE IF NOT EXISTS password_reset_tokens (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            staff_id INTEGER NOT NULL,
-            token_hash TEXT UNIQUE NOT NULL,
-            expires_at TEXT NOT NULL,
-            used INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY(staff_id) REFERENCES staff(id) ON DELETE CASCADE
+        CREATE TABLE IF NOT EXISTS private_notepad (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            content TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL,
+            updated_by TEXT NOT NULL DEFAULT ''
         );
         """
     )
@@ -399,61 +392,15 @@ def initialize_database():
             "UPDATE staff SET email = ?, role = ?, active = 1 WHERE id = ?",
             ("26-0054@staff.local", "superadmin", superadmin["id"]),
         )
+    note = connection.execute("SELECT id FROM private_notepad WHERE id = 1").fetchone()
+    if note is None:
+        connection.execute(
+            "INSERT INTO private_notepad (id, content, updated_at, updated_by) VALUES (1, '', ?, ?)",
+            (now(), "system"),
+        )
     durable_commit(connection)
     connection.close()
 initialize_database()
-def hash_reset_token(token):
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
-def build_public_url(path):
-    base = PUBLIC_BASE_URL or request.url_root.rstrip("/")
-    return base + path
-def send_gmail_reset_email(recipient, reset_url, username="Court Staff"):
-    if not GOOGLE_APPS_SCRIPT_URL or not GOOGLE_APPS_SCRIPT_SECRET:
-        return False, (
-            "Gmail reset email is not configured. Set GOOGLE_APPS_SCRIPT_URL and "
-            "GOOGLE_APPS_SCRIPT_SECRET in Render Environment Variables."
-        )
-    payload = {
-        "secret": GOOGLE_APPS_SCRIPT_SECRET,
-        "to": recipient,
-        "username": username,
-        "reset_url": reset_url,
-        "court_name": COURT_NAME,
-        "expires_minutes": 30,
-    }
-    try:
-        encoded = json.dumps(payload).encode("utf-8")
-        req = Request(
-            GOOGLE_APPS_SCRIPT_URL,
-            data=encoded,
-            headers={
-                "Content-Type": "application/json",
-                "User-Agent": "MCTC-Silang-Amadeo-Portal/1.0",
-            },
-            method="POST",
-        )
-        with urlopen(req, timeout=30) as response:
-            raw = response.read().decode("utf-8", "replace")
-        result = json.loads(raw)
-        if isinstance(result, dict) and result.get("ok") is True:
-            return True, "Password reset email sent."
-        if isinstance(result, dict):
-            return False, str(result.get("error") or "Gmail rejected the reset email request.")
-        return False, "Gmail returned an invalid response."
-    except HTTPError as exc:
-        try:
-            detail = exc.read().decode("utf-8", "replace")
-        except Exception:
-            detail = str(exc)
-        return False, f"Gmail bridge HTTP error {exc.code}: {detail[:500]}"
-    except URLError as exc:
-        return False, f"Could not reach the Gmail bridge: {exc.reason}"
-    except TimeoutError:
-        return False, "The Gmail bridge timed out. Please try again."
-    except json.JSONDecodeError:
-        return False, "The Gmail bridge returned an invalid response."
-    except Exception as exc:
-        return False, f"Gmail bridge error: {type(exc).__name__}: {exc}"
 BOND_REQUIREMENTS = [
     "Personal Data (form from court)",
     "Pictures 2x2 with name tag, signature, case, case number and date",
@@ -959,6 +906,9 @@ def render_page(title, body, staff_page=False):
             nav.append(
                 f"<a href='{url_for('superadmin_dashboard')}'>🛡️ Super Admin</a>"
             )
+            nav.append(
+                f"<a href='{url_for('private_notepad')}'>📝 Private Notepad</a>"
+            )
         nav.append(
             f"<a href='{url_for('change_password')}'>🔑 Change Password</a>"
         )
@@ -1443,10 +1393,73 @@ def staff_login():
             <br>
             <button type="submit">{tr('login') if 'login' in T[lang_value()] else 'Log In'}</button>
         </form>
+        <p class="center" style="margin-top:18px"><a href="{url_for('forgot_password')}">🔐 {tr('forgot_password')}</a></p>
     </section>
     """
     return render_page(tr("staff_login"), body)
-
+@app.route("/staff/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    """Reset a password locally without email using the court recovery code."""
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        recovery_code = request.form.get("recovery_code", "")
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        expected_code = os.environ.get("STAFF_RECOVERY_CODE", "MCTC-RESET-2026")
+        if not username or not recovery_code or not new_password or not confirm_password:
+            flash("Please fill in all recovery fields.", "danger")
+            return redirect(url_for("forgot_password"))
+        if not secrets.compare_digest(recovery_code, expected_code):
+            flash("The recovery code is incorrect.", "danger")
+            return redirect(url_for("forgot_password"))
+        if len(new_password) < 8:
+            flash("New password must contain at least 8 characters.", "danger")
+            return redirect(url_for("forgot_password"))
+        if new_password != confirm_password:
+            flash("The new passwords do not match.", "danger")
+            return redirect(url_for("forgot_password"))
+        connection = db()
+        staff = connection.execute(
+            "SELECT id, username, password_hash, active FROM staff WHERE lower(username) = lower(?) LIMIT 1",
+            (username,),
+        ).fetchone()
+        if staff is None or not staff["active"]:
+            connection.close()
+            flash("That account was not found or is disabled.", "danger")
+            return redirect(url_for("forgot_password"))
+        if check_password_hash(staff["password_hash"], new_password):
+            connection.close()
+            flash("New password must be different from the current password.", "danger")
+            return redirect(url_for("forgot_password"))
+        connection.execute(
+            "UPDATE staff SET password_hash = ? WHERE id = ?",
+            (generate_password_hash(new_password), staff["id"]),
+        )
+        durable_commit(connection)
+        connection.close()
+        audit("password_recovered", staff["username"])
+        flash("Password changed successfully. You can now log in.", "success")
+        return redirect(url_for("staff_login"))
+    body = """
+    <section class="card centered" style="max-width:620px;margin:45px auto">
+        <h1>🔐 Forgot Password</h1>
+        <p class="small">No email is required. Enter your username, the court recovery code, and your new password.</p>
+        <form method="post" autocomplete="off">
+            <label for="username">Username</label>
+            <input id="username" name="username" autocomplete="username" required>
+            <label for="recovery_code">Recovery Code</label>
+            <input id="recovery_code" type="password" name="recovery_code" autocomplete="off" required>
+            <label for="new_password">New Password</label>
+            <input id="new_password" type="password" name="new_password" minlength="8" autocomplete="new-password" required>
+            <label for="confirm_password">Confirm New Password</label>
+            <input id="confirm_password" type="password" name="confirm_password" minlength="8" autocomplete="new-password" required>
+            <br>
+            <button type="submit">Change Password</button>
+        </form>
+        <p class="center" style="margin-top:18px"><a href="{url_for('staff_login')}">← Back to Staff Login</a></p>
+    </section>
+    """
+    return render_page("Forgot Password", body, staff_page=True)
 
 @app.route("/staff/change-password", methods=["GET", "POST"])
 @staff_required
@@ -2300,6 +2313,47 @@ def update_requirement(category):
     audit("requirement_updated", category)
     flash("Requirement updated.", "success")
     return redirect(url_for("staff_requirements"))
+# Private Super Admin Notepad
+@app.route("/staff/private-notepad", methods=["GET", "POST"])
+@superadmin_required
+def private_notepad():
+    if request.method == "POST":
+        content = request.form.get("content", "")
+        connection = db()
+        connection.execute(
+            "UPDATE private_notepad SET content = ?, updated_at = ?, updated_by = ? WHERE id = 1",
+            (content, now(), session.get("staff_username", "26-0054")),
+        )
+        durable_commit(connection)
+        connection.close()
+        audit("private_notepad_saved", "superadmin")
+        flash("Private note saved.", "success")
+        return redirect(url_for("private_notepad"))
+    connection = db()
+    note = connection.execute("SELECT content, updated_at, updated_by FROM private_notepad WHERE id = 1").fetchone()
+    connection.close()
+    content = note["content"] if note else ""
+    updated_at = note["updated_at"] if note else ""
+    updated_by = note["updated_by"] if note else ""
+    body = f"""
+    <section class="hero">
+        <h1>📝 Private Notepad</h1>
+        <p><strong>SUPER ADMIN ONLY</strong></p>
+        <p class="small">This note is restricted to the Super Admin account and is stored in the court database.</p>
+    </section>
+    <section class="card" style="max-width:1000px;margin:0 auto">
+        <form method="post" autocomplete="off">
+            <textarea name="content" style="min-height:480px;width:100%;resize:vertical" placeholder="Write anything here...">{esc(content)}</textarea>
+            <div class="actions" style="justify-content:center">
+                <button type="submit">💾 Save Private Note</button>
+                <a class="button secondary" href="{url_for('superadmin_dashboard')}">Back to Super Admin</a>
+            </div>
+        </form>
+        <p class="small center">Last saved: {esc(updated_at)} by {esc(updated_by or '—')}</p>
+    </section>
+    """
+    return render_page("Private Notepad", body, staff_page=True)
+
 @app.route("/staff/super-admin")
 @superadmin_required
 def superadmin_dashboard():
@@ -2338,7 +2392,7 @@ def superadmin_dashboard():
     body = f"""
     <section class="hero">
         <h1>🛡️ Super Admin</h1>
-        <p><strong>Hello everyone, I like Kavee. 😈</strong></p>
+        <p><strong>Hello everyone, hahahaha. 😈</strong></p>
         <p class="small">Full system overview for the authorized super administrator. Passwords and reset tokens are never displayed.</p>
     </section>
     <section class="grid">
@@ -2351,6 +2405,11 @@ def superadmin_dashboard():
     <section class="card table-wrap">
         <h2 class="center">Case Overview</h2>
         <table><thead><tr><th>Case Number</th><th>Plaintiff</th><th>Defendant</th><th>Status</th><th>Updated</th></tr></thead><tbody>{case_table or '<tr><td colspan="5">No cases</td></tr>'}</tbody></table>
+    </section>
+    <section class="card centered">
+        <h2>🔒 Private Super Admin Area</h2>
+        <p>This area is unavailable to normal Admin and Staff accounts.</p>
+        <p><a class="button" href="{url_for('private_notepad')}">📝 Open Private Notepad</a></p>
     </section>
     <section class="card table-wrap">
         <h2 class="center">Recent Audit Activity</h2>
@@ -2448,7 +2507,7 @@ def add_staff():
                 now(),
             ),
         )
-        connection.commit()
+        durable_commit(connection)
     except sqlite3.IntegrityError:
         connection.close()
         flash("That username or email already exists.", "danger")
