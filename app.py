@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 import html
 import sqlite3
+import io
 import secrets
 import hashlib
 from pathlib import Path
@@ -21,6 +22,16 @@ from flask import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
+try:
+    from pymongo import MongoClient
+    from pymongo.errors import PyMongoError
+    from gridfs import GridFSBucket
+    MONGODB_DRIVER_AVAILABLE = True
+except ImportError:
+    MongoClient = None
+    PyMongoError = Exception
+    GridFSBucket = None
+    MONGODB_DRIVER_AVAILABLE = False
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/var/data"))
 try:
@@ -59,6 +70,26 @@ COURT_PHONE = "09284621305"
 COURT_EMAIL = "mctc2sad000@judiciary.gov.ph"
 COURT_OFFICE_HOURS = "8:00 AM - 5:00 PM"
 MCTC_LOGO = "image0.png"
+MONGODB_URI = os.environ.get("MONGODB_URI", "").strip()
+MONGODB_DB_NAME = os.environ.get("MONGODB_DB", "mctc_silang_amadeo").strip() or "mctc_silang_amadeo"
+MONGO_CLIENT = None
+MONGO_DB = None
+MONGO_UPLOADS = None
+MONGO_STATE = None
+MONGO_READY = False
+MONGO_ERROR = ""
+MONGO_LAST_SYNC = ""
+MONGO_COLLECTIONS = (
+    "staff",
+    "cases",
+    "hearings",
+    "notices",
+    "legal_resources",
+    "requirements",
+    "schedule",
+    "audit_logs",
+    "private_notepad",
+)
 SUPREME_LOGO = "1280px-Seal_of_the_Supreme_Court_(Philippines).png"
 MAP_QUERY = quote_plus(f"{COURT_NAME}, {COURT_ADDRESS}")
 GOOGLE_MAPS_URL = (
@@ -199,6 +230,156 @@ def now():
 def current_theme():
     theme = session.get("theme", "light")
     return theme if theme in {"light", "dark"} else "light"
+def configure_mongodb():
+    global MONGO_CLIENT, MONGO_DB, MONGO_UPLOADS, MONGO_STATE
+    global MONGO_READY, MONGO_ERROR
+    if not MONGODB_URI:
+        MONGO_READY = False
+        MONGO_ERROR = "MONGODB_URI is not configured."
+        return
+    if not MONGODB_DRIVER_AVAILABLE:
+        MONGO_READY = False
+        MONGO_ERROR = "pymongo is not installed. Add pymongo[srv] to requirements.txt."
+        return
+    try:
+        MONGO_CLIENT = MongoClient(
+            MONGODB_URI,
+            serverSelectionTimeoutMS=8000,
+            connectTimeoutMS=8000,
+            socketTimeoutMS=20000,
+            retryWrites=True,
+        )
+        MONGO_CLIENT.admin.command("ping")
+        MONGO_DB = MONGO_CLIENT[MONGODB_DB_NAME]
+        MONGO_UPLOADS = GridFSBucket(MONGO_DB, bucket_name="uploads")
+        MONGO_STATE = GridFSBucket(MONGO_DB, bucket_name="application_state")
+        MONGO_READY = True
+        MONGO_ERROR = ""
+    except Exception as error:
+        MONGO_READY = False
+        MONGO_ERROR = f"{type(error).__name__}: {error}"
+
+def restore_sqlite_from_mongodb():
+    if not MONGO_READY or MONGO_STATE is None:
+        return False
+    try:
+        latest = None
+        for item in MONGO_STATE.find({"filename": "mctc_court.db"}).sort("uploadDate", -1).limit(1):
+            latest = item
+            break
+        if latest is None:
+            return False
+        data = MONGO_STATE.open_download_stream(latest["_id"]).read()
+        temp = DB_PATH.with_suffix(".mongo-restored.db")
+        temp.write_bytes(data)
+        for suffix in ("-wal", "-shm"):
+            sidecar = Path(str(DB_PATH) + suffix)
+            if sidecar.exists():
+                try:
+                    sidecar.unlink()
+                except OSError:
+                    pass
+        temp.replace(DB_PATH)
+        return True
+    except Exception as error:
+        global MONGO_ERROR
+        MONGO_ERROR = f"Restore failed: {type(error).__name__}: {error}"
+        return False
+
+def restore_uploads_from_mongodb():
+    if not MONGO_READY or MONGO_UPLOADS is None:
+        return
+    try:
+        for item in MONGO_UPLOADS.find({"metadata.kind": "application-upload"}):
+            local_name = (item.get("metadata") or {}).get("local_name")
+            if not local_name:
+                continue
+            destination = UPLOAD_DIR / secure_filename(local_name)
+            data = MONGO_UPLOADS.open_download_stream(item["_id"]).read()
+            destination.write_bytes(data)
+    except Exception as error:
+        global MONGO_ERROR
+        MONGO_ERROR = f"Upload restore failed: {type(error).__name__}: {error}"
+
+def sync_sqlite_to_mongodb():
+    global MONGO_LAST_SYNC, MONGO_ERROR
+    if not MONGO_READY or MONGO_STATE is None:
+        return False
+    try:
+        for old in MONGO_STATE.find({"filename": "mctc_court.db"}):
+            MONGO_STATE.delete(old["_id"])
+        data = DB_PATH.read_bytes()
+        with MONGO_STATE.open_upload_stream(
+            "mctc_court.db",
+            metadata={"kind": "sqlite-snapshot", "updated_at": now()},
+        ) as stream:
+            stream.write(data)
+        MONGO_LAST_SYNC = now()
+        MONGO_ERROR = ""
+        return True
+    except Exception as error:
+        MONGO_ERROR = f"Sync failed: {type(error).__name__}: {error}"
+        return False
+
+def sync_sqlite_collections_to_mongodb(connection):
+    if not MONGO_READY or MONGO_DB is None:
+        return False
+    try:
+        for table_name in MONGO_COLLECTIONS:
+            rows = connection.execute(f"SELECT * FROM {table_name}").fetchall()
+            documents = []
+            for row in rows:
+                item = {key: row[key] for key in row.keys()}
+                if "id" in item:
+                    item["_legacy_id"] = item["id"]
+                item["_source_table"] = table_name
+                item["_synced_at"] = now()
+                item["_id"] = f"{table_name}:{item.get('id', 'singleton')}"
+                documents.append(item)
+            collection = MONGO_DB[table_name]
+            collection.delete_many({})
+            if documents:
+                collection.insert_many(documents, ordered=False)
+        return True
+    except Exception as error:
+        global MONGO_ERROR
+        MONGO_ERROR = f"Collection sync failed: {type(error).__name__}: {error}"
+        return False
+
+def sync_uploaded_file_to_mongodb(local_name, original_name=None):
+    if not MONGO_READY or MONGO_UPLOADS is None:
+        return True
+    try:
+        path = UPLOAD_DIR / local_name
+        if not path.exists():
+            return False
+        data = path.read_bytes()
+        with MONGO_UPLOADS.open_upload_stream(
+            local_name,
+            metadata={
+                "kind": "application-upload",
+                "local_name": local_name,
+                "original_name": original_name or local_name,
+                "updated_at": now(),
+            },
+        ) as stream:
+            stream.write(data)
+        return True
+    except Exception as error:
+        global MONGO_ERROR
+        MONGO_ERROR = f"File sync failed: {type(error).__name__}: {error}"
+        return False
+
+def delete_uploaded_file_from_mongodb(local_name):
+    if not MONGO_READY or MONGO_UPLOADS is None:
+        return
+    try:
+        for item in MONGO_UPLOADS.find({"metadata.local_name": local_name}):
+            MONGO_UPLOADS.delete(item["_id"])
+    except Exception as error:
+        global MONGO_ERROR
+        MONGO_ERROR = f"File delete sync failed: {type(error).__name__}: {error}"
+
 def db():
     connection = sqlite3.connect(DB_PATH, timeout=30)
     connection.row_factory = sqlite3.Row
@@ -207,13 +388,22 @@ def db():
     connection.execute("PRAGMA synchronous = FULL")
     connection.execute("PRAGMA busy_timeout = 30000")
     return connection
+
 def durable_commit(connection):
-    """Commit changes immediately so submitted staff data is persisted server-side."""
+    """Commit changes and mirror the current database into MongoDB when configured."""
     connection.commit()
     try:
-        connection.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     except sqlite3.Error:
-        pass
+        try:
+            connection.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        except sqlite3.Error:
+            pass
+    if MONGO_READY:
+        sync_sqlite_collections_to_mongodb(connection)
+        if not sync_sqlite_to_mongodb():
+            return False
+    return True
 def initialize_database():
     connection = db()
     connection.executescript(
@@ -400,6 +590,9 @@ def initialize_database():
         )
     durable_commit(connection)
     connection.close()
+configure_mongodb()
+restore_sqlite_from_mongodb()
+restore_uploads_from_mongodb()
 initialize_database()
 BOND_REQUIREMENTS = [
     "Personal Data (form from court)",
@@ -435,7 +628,7 @@ def audit(action, target=""):
                 now(),
             ),
         )
-        connection.commit()
+        durable_commit(connection)
         connection.close()
     except sqlite3.Error:
         pass
@@ -477,6 +670,12 @@ def save_upload(file):
         raise ValueError("That file type is not allowed.")
     generated = f"{secrets.token_hex(16)}_{original}"
     file.save(UPLOAD_DIR / generated)
+    if MONGO_READY and not sync_uploaded_file_to_mongodb(generated, original):
+        try:
+            (UPLOAD_DIR / generated).unlink()
+        except OSError:
+            pass
+        raise ValueError("The upload could not be synchronized to MongoDB.")
     return generated, original, extension
 def delete_uploaded_file(filename):
     if not filename:
@@ -487,6 +686,7 @@ def delete_uploaded_file(filename):
             path.unlink()
         except OSError:
             pass
+    delete_uploaded_file_from_mongodb(filename)
 STYLE = r"""
 :root {
     --bg: #faf8fd;
@@ -1501,7 +1701,7 @@ def change_password():
             "UPDATE staff SET password_hash = ? WHERE id = ?",
             (generate_password_hash(new_password), staff["id"]),
         )
-        connection.commit()
+        durable_commit(connection)
         connection.close()
         audit("password_changed", staff["username"])
         flash("Password changed successfully.", "success")
@@ -1679,7 +1879,7 @@ def staff_add_case():
                     now(),
                 ),
             )
-            connection.commit()
+            durable_commit(connection)
         except sqlite3.IntegrityError:
             connection.close()
             flash("That case number already exists.", "danger")
@@ -1746,7 +1946,7 @@ def staff_edit_case(case_id):
                 case_id,
             ),
         )
-        connection.commit()
+        durable_commit(connection)
         connection.close()
         audit("case_updated", case["case_number"])
         flash("Case updated successfully.", "success")
@@ -1784,7 +1984,7 @@ def staff_delete_case(case_id):
         connection.close()
         abort(404)
     connection.execute("DELETE FROM cases WHERE id = ?", (case_id,))
-    connection.commit()
+    durable_commit(connection)
     connection.close()
     audit("case_deleted", case["case_number"])
     flash("Case deleted successfully.", "success")
@@ -1837,7 +2037,7 @@ def staff_hearing(case_id):
                 """,
                 (case_id,) + values,
             )
-        connection.commit()
+        durable_commit(connection)
         connection.close()
         audit("hearing_updated", case["case_number"])
         flash("Hearing updated successfully.", "success")
@@ -1978,7 +2178,7 @@ def upload_schedule():
             session.get("staff_username", ""),
         ),
     )
-    connection.commit()
+    durable_commit(connection)
     connection.close()
     if old and old["file_name"] and old["file_name"] != filename:
         delete_uploaded_file(old["file_name"])
@@ -1993,7 +2193,7 @@ def delete_schedule():
         "SELECT file_name FROM schedule WHERE id = 1"
     ).fetchone()
     connection.execute("DELETE FROM schedule WHERE id = 1")
-    connection.commit()
+    durable_commit(connection)
     connection.close()
     if row and row["file_name"]:
         delete_uploaded_file(row["file_name"])
@@ -2076,7 +2276,7 @@ def add_notice():
         """,
         values + (filename, original, now(), now()),
     )
-    connection.commit()
+    durable_commit(connection)
     connection.close()
     audit("notice_created", values[0])
     flash("Notice published successfully.", "success")
@@ -2093,7 +2293,7 @@ def delete_notice(notice_id):
         "DELETE FROM notices WHERE id = ?",
         (notice_id,),
     )
-    connection.commit()
+    durable_commit(connection)
     connection.close()
     if row:
         delete_uploaded_file(row["attachment"])
@@ -2192,7 +2392,7 @@ def add_law():
             now(),
         ),
     )
-    connection.commit()
+    durable_commit(connection)
     connection.close()
     audit("legal_resource_created", title)
     flash("Legal resource added.", "success")
@@ -2209,7 +2409,7 @@ def delete_law(law_id):
         "DELETE FROM legal_resources WHERE id = ?",
         (law_id,),
     )
-    connection.commit()
+    durable_commit(connection)
     connection.close()
     if row:
         delete_uploaded_file(row["file_name"])
@@ -2308,7 +2508,7 @@ def update_requirement(category):
                 category,
             ),
         )
-    connection.commit()
+    durable_commit(connection)
     connection.close()
     audit("requirement_updated", category)
     flash("Requirement updated.", "success")
@@ -2535,7 +2735,7 @@ def toggle_staff(staff_id):
         "UPDATE staff SET active = ? WHERE id = ?",
         (0 if row["active"] else 1, staff_id),
     )
-    connection.commit()
+    durable_commit(connection)
     connection.close()
     return redirect(url_for("staff_accounts"))
 @app.post("/staff/accounts/<int:staff_id>/delete")
@@ -2557,7 +2757,7 @@ def delete_staff(staff_id):
         "DELETE FROM staff WHERE id = ?",
         (staff_id,),
     )
-    connection.commit()
+    durable_commit(connection)
     connection.close()
     flash("Staff account deleted.", "success")
     return redirect(url_for("staff_accounts"))
@@ -2575,7 +2775,17 @@ def change_theme(theme):
     return redirect(request.referrer or url_for("home"))
 @app.route("/health")
 def health():
-    return {"status": "ok", "service": COURT_NAME}
+    return {
+        "status": "ok",
+        "service": COURT_NAME,
+        "mongodb": {
+            "configured": bool(MONGODB_URI),
+            "connected": bool(MONGO_READY),
+            "database": MONGODB_DB_NAME if MONGODB_URI else "",
+            "last_sync": MONGO_LAST_SYNC,
+            "error": MONGO_ERROR,
+        },
+    }
 @app.after_request
 def security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
